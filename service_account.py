@@ -4,13 +4,14 @@ from urllib import parse
 
 import requests
 
-import base
+import base_ccloud
 
 pp = pprint.PrettyPrinter(indent=2)
+SA_VALUE = {}
 
 
 def cache_sa(url, params, value_dict):
-    resp = requests.get(url=url, auth=base.BASIC_AUTH, params=params)
+    resp = requests.get(url=url, auth=base_ccloud.BASIC_AUTH, params=params)
     if resp.status_code == 200:
         out_json = resp.json()
         for item in out_json["data"]:
@@ -26,13 +27,13 @@ def cache_sa(url, params, value_dict):
 
 
 def print_sa_table(sa_dict):
-    for k, v in sa_dict.items():
+    for v in sa_dict.values():
         print("{:<15} {:<40} {:<50}".format(
             v["id"], v["display_name"], v["description"]))
 
 
 def check_existing_sa(sa_name, sa_dict):
-    for k, v in sa_dict.items():
+    for v in sa_dict.values():
         if sa_name in v["display_name"]:
             # print("Service Account already exists. Returning back the existing details.")
             return v
@@ -47,24 +48,24 @@ def create_sa(sa_name):
         "description": str("Account for " + sa_name + " created by CI/CD framework")
     }
     resp = requests.post(
-        url=str(base.CCLOUD_URL + base.URI_LIST['sa']), json=payload, auth=base.BASIC_AUTH, )
+        url=str(base_ccloud.CCLOUD_URL + base_ccloud.URI_LIST['sa']), json=payload, auth=base_ccloud.BASIC_AUTH, )
     sa_details = loads(resp.text)
     pp.pprint(sa_details)
     return sa_details
 
 
-def run_sa_workflow(argValues):
-    base.initial_setup()
-    svc_account_name = argValues.service_account_name
+def run_sa_workflow(svc_account_name="", create_account=False, force_new_account=False):
+    if not (svc_account_name):
+        raise Exception('Service Account name is missing')
 
     sa_values = {}
-    cache_sa(base.CCLOUD_URL + base.URI_LIST['sa'],
+    cache_sa(base_ccloud.CCLOUD_URL + base_ccloud.URI_LIST['sa'],
              {"page_size": 20}, value_dict=sa_values)
     # print(len(sa_values))
     # print_sa_table(sa_values)
 
     sa_details = check_existing_sa(svc_account_name, sa_values)
-    if (argValues.force_new_account) and (sa_details is not None):
+    if (force_new_account) and (sa_details is not None):
         print("Service Account found with name " + svc_account_name +
               " but --force-new-account flag is checked, so will try to create another account. ", )
         for i in range(1, 99999):
@@ -78,14 +79,25 @@ def run_sa_workflow(argValues):
                 print("Service account exists with name " +
                       temp_name + " as well. Will keep retrying.")
     if sa_details is None:
-        sa_details = create_sa(svc_account_name)
+        if create_account:
+            sa_details = create_sa(svc_account_name)
+        else:
+            print("Could not find a Service Account with display name " +
+                  svc_account_name + " and account creation was not allowed.")
     else:
         print("Service Account found with name " + svc_account_name)
         pp.pprint(sa_details)
+    global SA_VALUE
+    SA_VALUE = sa_details
 
-    with open('output.json', 'w') as output_file:
-        output_file.write(dumps(sa_details))
-        print("The details of service account are added to " + output_file.name)
+    if sa_details:
+        with open('sa_values.json', 'w', encoding="utf-8") as output_file:
+            output_file.write(dumps(sa_details))
+            print("The details of service account are added to " + output_file.name)
+    else:
+        print("Did not update/write the output file as service account was not found.")
+
+    return SA_VALUE
 
 
 if __name__ == '__main__':
@@ -93,21 +105,17 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description="Command line arguments for controlling the application", add_help=True, )
     sa_args = parser.add_argument_group("sa-args", "Service Account Arguments")
-    sa_args.add_argument('--service-account-name', type=str, default=None,
+    sa_args.add_argument('--service-account-name', type=str, default="",
+                         help="Provide the name for which Service Account needs to be created.",)
+    sa_args.add_argument('--create-service-account-if-necessary', action="store_true", default=False,
                          help="Provide the name for which Service Account needs to be created.",)
     sa_args.add_argument('--force-new-account', action="store_true", default=False,
                          help="Force Generate a new Service Account even if an account exists with the same Name",)
-
-    # api_args = parser.add_argument_group(
-    #     "api-args", "API management arguments")
-    # api_args.add_argument('--setup-api-keys', action="store_false", default=False,
-    #                       help="Generate new API Keys & Secrets while setting up the new Service Account",)
-    # api_args.add_argument('--force-api-key-creation', action="store_false", default=False,
-    #                          help="Generate new API Keys & Secrets while setting up the new Service Account",)
+    sa_args.add_argument('--add-as-rest-proxy-user', action="store_true", default=False,
+                         help="Add the Service Account to REST Proxy users",)
 
     args = parser.parse_args()
-    if not (args.service_account_name):
-        parser.error(
-            'Provide the Name for which the Service Account needs to be created')
 
-    run_sa_workflow(args)
+    base_ccloud.initial_setup(False)
+    run_sa_workflow(args.service_account_name if hasattr(
+        args, "service_account_name") else "", True, args.force_new_account)
