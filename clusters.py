@@ -1,9 +1,7 @@
 import pprint
-from json import dumps, loads
 from urllib import parse
 
 import requests
-from requests.auth import HTTPBasicAuth
 
 import base_ccloud
 

@@ -1,5 +1,5 @@
 from requests.auth import HTTPBasicAuth
-from os import environ, name
+from os import environ
 
 CCLOUD_URL = "https://api.confluent.cloud"
 URI_LIST = {}
