@@ -11,11 +11,11 @@ pp = pprint.PrettyPrinter(indent=2)
 client = boto3.client('secretsmanager')
 
 
-def create_secret_name(env_id: str, cluster_id: str, sa_name: str, api_key_name: str, secret_name_prefix: str):
+def create_secret_name(env_id: str, cluster_id: str, sa_id: str, api_key_name: str, secret_name_prefix: str):
     sep = "/"
     # secretName = env_name + sep + cluster_name + sep + sa_name
     secret_name = (str(sep + secret_name_prefix) if secret_name_prefix else "") + \
-        sep + "ccloud" + sep + sa_name + sep + env_id + sep + cluster_id
+        sep + "ccloud" + sep + sa_id + sep + env_id + sep + cluster_id
     return secret_name
 
 
@@ -40,7 +40,14 @@ def list_secrets(key_value: str, filter_tags: dict):
 
 
 def get_secret(secret_name: str):
-    resp = client.get_secret_value(SecretId=secret_name)
+    try:
+        resp = client.get_secret_value(SecretId=secret_name)
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ResourceNotFoundException':
+            print("Secret Not Found.")
+            return {}
+        else:
+            raise e
     if resp["ResponseMetadata"]["HTTPStatusCode"] != 200:
         raise Exception(
             "AWS Secrets Manager Get Secret request failed. Please check the error and try again." + dumps(resp))
@@ -59,6 +66,8 @@ def create_secret(secret_name: str, secret_values: dict, secret_tags: list):
         SecretString=dumps(secret_values),
         Tags=secret_tags
     )
+    print("Secret Created Successfully. Secret Details as follows:")
+    pp.pprint(resp)
     return resp
 
 
@@ -87,21 +96,16 @@ def update_secret(secret_name: str, old_secret_values: str, new_secret_values: d
     return
 
 
-def run_aws_sec_mgr_workflow(wf_type: str, api_keys: dict, add_as_rest_proxy_user: bool, force_new_secret_version: bool, secret_name_prefix: str):
+def run_aws_sec_mgr_workflow(wf_type: str, api_keys: dict, add_as_rest_proxy_user: bool, secret_name_prefix: str):
     for api_key in api_keys.values():
         env_name = api_key["env_name"]
         env_id = api_key["env_id"]
         cluster_name = api_key["cluster_name"]
-        cluster_id = api_key["api_key"]["resource_id"]
+        cluster_id = api_key["resource_id"]
         sa_name = api_key["sa_name"]
-        sa_id = api_key["api_key"]["owner_resource_id"]
-        api_key_name = api_key["api_key"]["key"]
+        sa_id = api_key["owner_resource_id"]
+        api_key_name = api_key["key"]
         rest_proxy_user = "True" if add_as_rest_proxy_user else "False"
-        tags_for_search = {
-            "env_id": env_id,
-            "cluster_id": cluster_id,
-            "sa_id": sa_id
-        }
         tags_for_create = {
             "env_name": env_name,
             "env_id": env_id,
@@ -112,7 +116,7 @@ def run_aws_sec_mgr_workflow(wf_type: str, api_keys: dict, add_as_rest_proxy_use
             "rest_proxy_user": rest_proxy_user
         }
         secret_name = create_secret_name(
-            env_id, cluster_id, sa_name, api_key_name, secret_name_prefix)
+            env_id, cluster_id, sa_id, api_key_name, secret_name_prefix)
         # client.restore_secret(SecretId=secret_name)
         out_secret = get_secret(secret_name)
         if "get" in wf_type:
@@ -128,8 +132,8 @@ def run_aws_sec_mgr_workflow(wf_type: str, api_keys: dict, add_as_rest_proxy_use
                 return out_secret
         if "store" in wf_type:
             secret_data = {
-                "username": api_key["api_key"]["key"],
-                "password": api_key["api_key"]["secret"]
+                "username": api_key["key"],
+                "password": api_key["secret"]
             }
             if not out_secret:
                 create_secret(secret_name, secret_data, [
@@ -191,5 +195,5 @@ if __name__ == '__main__':
     # run_aws_sec_mgr_workflow("get", api_keys, args.add_as_rest_proxy_user,
     #                          False, args.secret_name_prefix)
     run_aws_sec_mgr_workflow("store", api_keys, args.add_as_rest_proxy_user,
-                             False, args.secret_name_prefix)
+                             args.secret_name_prefix)
     print("")

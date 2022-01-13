@@ -40,8 +40,8 @@ sm_args.add_argument('--enable-secret-management', action="store_true", default=
 sm_args.add_argument('--secret-manager-type', type=str, default="aws-secretmanager",
                      choices=['aws-secretmanager'],
                      help="Provide the Secret Storage Type to use",)
-api_args.add_argument('--secret-name-prefix', type=str, metavar="prefix_for_secret_name", default=None,
-                      help='If you need to add a prefix to the Secret name, it could be done with this switch.')
+sm_args.add_argument('--secret-name-prefix', type=str, metavar="prefix_for_secret_name", default=None,
+                     help='If you need to add a prefix to the Secret name, it could be done with this switch.')
 
 args = parser.parse_args()
 
@@ -61,10 +61,10 @@ if "create-apikey" in args.wf_name:
     existing_api_key_output, new_api_key_output = api_key_manager.run_api_key_workflow(
         args.service_account_name, args.create_service_account_if_necessary, True,
         args.cluster_list, args.force_all_clusters, args.force_new_api_keys, True)
-    if new_api_key_output:
-        for new_key in new_api_key_output:
-            if "aws-secretmanager" == args.secret_manager_type:
-                import aws_secrets_manager
-                aws_secrets_manager.run_aws_sec_mgr_workflow(
-                    "store", new_api_key_output, args.add_as_rest_proxy_user, False, None)
+    if new_api_key_output and args.enable_secret_management:
+        if "aws-secretmanager" == args.secret_manager_type:
+            import aws_secrets_manager
+            print("=" * 40)
+            aws_secrets_manager.run_aws_sec_mgr_workflow(
+                "store", new_api_key_output, args.add_as_rest_proxy_user, None)
 print("")

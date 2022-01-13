@@ -23,10 +23,9 @@ def int_execute_subcommand(command):
 
 
 def int_confluent_cli_login():
-    # TODO: Remove the save toggle here and change the output validation.
-    cmd_login = "confluent login --save" + CMD_STDERR_TO_STDOUT
+    cmd_login = "confluent login" + CMD_STDERR_TO_STDOUT
     output = int_execute_subcommand(cmd_login)
-    if not output.startswith('Wrote credentials to netrc file'):
+    if output != "":
         raise Exception(
             "Could not login into Confluent Cloud CLI. Please ensure that the credentials are correct."
             + output)
@@ -76,7 +75,7 @@ def int_print_api_key(sa_name, api_key):
 
 
 def int_create_api_key(cluster_id, sa_id, sa_name):
-    api_key_description = "API Key for " + sa_name + " created by CI/CD framework"
+    api_key_description = "API Key for " + sa_name + " created by CI/CD framework."
     cmd_create_api_key = "confluent api-key create -o json --service-account " + sa_id + \
         " --resource " + cluster_id + " --description \"" + \
         api_key_description + "\"" + CMD_STDERR_TO_STDOUT
@@ -84,7 +83,7 @@ def int_create_api_key(cluster_id, sa_id, sa_name):
     return output
 
 
-def int_check_setup_api_key(sa_id, sa_name, cluster, force_new_key: bool):
+def int_check_setup_api_key(sa_id, sa_name, cluster: dict, force_new_key: bool):
     cluster_id = cluster["id"]
     cluster_name = cluster["spec"]["display_name"]
     env_id = cluster["spec"]["environment"]["id"]
@@ -99,15 +98,19 @@ def int_check_setup_api_key(sa_id, sa_name, cluster, force_new_key: bool):
         print(
             "Override provided via --force-new-api-keys switch. Generating new API Keys.")
         api_key = None
-    if api_key is None:
+    if not api_key:
         create_output = int_create_api_key(cluster_id, sa_id, sa_name)
         int_confluent_cli_get_api_key_list(sa_id)
+        key_id = create_output["key"]
         api_key = int_check_existing_api_key(
-            cluster_id, sa_id, create_output["key"])
+            cluster_id, sa_id, key_id)
         int_print_api_key(sa_name, api_key)
-        OUTPUT_NEWLY_CREATED_KEYS[create_output["key"]] = api_key
-        OUTPUT_NEWLY_CREATED_KEYS[create_output["key"]
-                                  ]["api_key"]["secret"] = create_output["secret"]
+        OUTPUT_NEWLY_CREATED_KEYS[key_id] = api_key[0].copy()
+        OUTPUT_NEWLY_CREATED_KEYS[key_id]["secret"] = create_output["secret"]
+        OUTPUT_NEWLY_CREATED_KEYS[key_id]["env_id"] = env_id
+        OUTPUT_NEWLY_CREATED_KEYS[key_id]["env_name"] = env_name
+        OUTPUT_NEWLY_CREATED_KEYS[key_id]["cluster_name"] = cluster_name
+        OUTPUT_NEWLY_CREATED_KEYS[key_id]["sa_name"] = sa_name
     global OUTPUT_API_KEYS
     for item in api_key:
         key = item["key"]
