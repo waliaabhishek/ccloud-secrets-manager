@@ -60,11 +60,11 @@ def int_check_existing_api_key(cluster_id, sa_id, api_key_id=None):
     temp_key = []
     if SA_API_KEYS:
         if api_key_id:
-            temp_key = [item for item in SA_API_KEYS if sa_id in item["owner_resource_id"]
-                        and cluster_id in item["resource_id"] and api_key_id in item["key"]]
+            temp_key = [item for item in SA_API_KEYS if sa_id == item["owner_resource_id"]
+                        and cluster_id == item["resource_id"] and api_key_id == item["key"]]
         else:
-            temp_key = sorted([item for item in SA_API_KEYS if sa_id in item["owner_resource_id"]
-                               and cluster_id in item["resource_id"]], key=itemgetter('created'), reverse=True)
+            temp_key = sorted([item for item in SA_API_KEYS if sa_id == item["owner_resource_id"]
+                               and cluster_id == item["resource_id"]], key=itemgetter('created'), reverse=True)
     return temp_key
 
 

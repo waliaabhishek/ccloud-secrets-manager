@@ -34,7 +34,7 @@ def print_sa_table(sa_dict):
 
 def check_existing_sa(sa_name, sa_dict):
     for v in sa_dict.values():
-        if sa_name in v["display_name"]:
+        if sa_name == v["display_name"]:
             # print("Service Account already exists. Returning back the existing details.")
             return v
     return None
