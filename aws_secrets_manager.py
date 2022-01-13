@@ -77,11 +77,14 @@ def update_secret(secret_name: str, old_secret_values: str, new_secret_values: d
     if old_hash == new_hash:
         print("Not updating Secret with the provided value as current value is same as the older value.")
     else:
+        print("Updating " + secret_name +
+              " with the new API Key & Secret values. API Key ID: " + new_secret_values["username"])
         resp = client.put_secret_value(
             SecretId=secret_name,
             SecretString=dumps(new_secret_values),
         )
-        print("")
+        print("Updated secret successfully with new API Key/Secret. Secret Details:")
+        pp.pprint(resp)
     print("Adding/Updating Tags as follows:")
     pp.pprint(new_secret_tags)
     resp = client.tag_resource(
@@ -91,7 +94,6 @@ def update_secret(secret_name: str, old_secret_values: str, new_secret_values: d
     if resp["ResponseMetadata"]["HTTPStatusCode"] != 200:
         print("Was not able to update the secret tags.")
     else:
-
         print("Tags Added successfully.")
     return
 
