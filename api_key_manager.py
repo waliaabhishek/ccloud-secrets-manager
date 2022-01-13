@@ -112,6 +112,7 @@ def int_check_setup_api_key(sa_id, sa_name, cluster: dict, force_new_key: bool):
         OUTPUT_NEWLY_CREATED_KEYS[key_id]["cluster_name"] = cluster_name
         OUTPUT_NEWLY_CREATED_KEYS[key_id]["sa_name"] = sa_name
     global OUTPUT_API_KEYS
+    api_key = int_check_existing_api_key(cluster_id, sa_id)
     for item in api_key:
         key = item["key"]
         value = {
