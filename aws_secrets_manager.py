@@ -2,6 +2,8 @@ from json import dumps, loads
 import boto3
 from botocore.exceptions import ClientError
 import pprint
+
+from botocore.parsers import EC2QueryParser
 import base_ccloud
 import hashlib
 
@@ -20,6 +22,10 @@ def create_secret_name(env_id: str, cluster_id: str, sa_id: str, api_key_name: s
 def create_filter_tags(key_value: str, tags: dict):
     filter = [{"Key": key_value, "Values": [v]} for k, v in tags.items()]
     return filter
+
+
+def render_secret_tags_format(tags: dict):
+    return [{"Key": k, "Value": v} for k, v in tags.items()]
 
 
 def create_digest(json_object_data):
@@ -50,6 +56,58 @@ def get_secret(secret_name: str):
         raise Exception(
             "AWS Secrets Manager Get Secret request failed. Please check the error and try again." + dumps(resp))
     return resp
+
+
+def add_secrets_to_rest_proxy_user(env_id: str, cluster_id: str, secret_name_prefix: str, api_key: str,  api_secret: str, rp_fe_user_filepath: str,
+                                   secret_tags: dict, rest_proxy_user="rest-proxy-user", proxy_user_string="krp-users"):
+    rest_proxy_secret_name = create_secret_name(
+        env_id, cluster_id, rest_proxy_user, api_key, secret_name_prefix)
+    secret_data = get_secret(rest_proxy_secret_name)
+    secret_tags.pop("sa_name", None)
+    secret_tags.pop("sa_id", None)
+    secret_tags.pop("allowed_in_rest_proxy", None)
+    secret_tags["rest_proxy_user"] = "True"
+    if not secret_data:
+        print("Did not find any Rest Proxy Secret for the environment and cluster. Creating a new Secret now.")
+        basic_user = api_key + ": " + api_secret + "," + proxy_user_string
+        jaas_user = "\n".join(["KafkaRest {",
+                              "\torg.eclipse.jetty.jaas.spi.PropertyFileLoginModule required",
+                               "\tdebug=\"true\"",
+                               str('\tfile="' + rp_fe_user_filepath + '";'),
+                               "};", ""
+                               "KafkaClient {",
+                               "\torg.apache.kafka.common.security.plain.PlainLoginModule required",
+                               str('\tusername="' + api_key + '"'),
+                               str('\tpassword="' + api_secret + '";'),
+                               "};"
+                               ])
+        secret_data = {
+            "basic.txt": basic_user,
+            "restProxyUsers.jaas": jaas_user,
+        }
+        create_secret(rest_proxy_secret_name, secret_data,
+                      render_secret_tags_format(secret_tags))
+    else:
+        secret_string = loads(secret_data["SecretString"])
+        secret_string["basic.txt"] = "\n".join([secret_string["basic.txt"],
+                                                str(api_key + ": " + api_secret +
+                                                    "," + proxy_user_string)
+                                                ])
+        location = str(secret_string["restProxyUsers.jaas"]).rfind("};")
+        if location == -1:
+            raise Exception(
+                "Could not parse/understand JAAS configs. Not sure what to do.")
+        secret_string["restProxyUsers.jaas"] = "\n".join([
+            secret_string["restProxyUsers.jaas"][:location],
+            "",
+            "\torg.apache.kafka.common.security.plain.PlainLoginModule required",
+            str('\tusername="' + api_key + '"'),
+            str('\tpassword="' + api_secret + '";'),
+            secret_string["restProxyUsers.jaas"][location:],
+        ])
+        update_secret(rest_proxy_secret_name, loads(
+            secret_data["SecretString"]), secret_string, secret_tags)
+    return
 
 
 def create_secret(secret_name: str, secret_values: dict, secret_tags: list):
@@ -96,7 +154,7 @@ def update_secret(secret_name: str, old_secret_values: str, new_secret_values: d
     return
 
 
-def run_aws_sec_mgr_workflow(wf_type: str, api_keys: dict, add_as_rest_proxy_user: bool, secret_name_prefix: str):
+def run_aws_sec_mgr_workflow(wf_type: str, api_keys: dict, add_as_rest_proxy_user: bool, secret_name_prefix: str, rp_fe_user_filepath: str):
     for api_key in api_keys.values():
         env_name = api_key["env_name"]
         env_id = api_key["env_id"]
@@ -113,7 +171,7 @@ def run_aws_sec_mgr_workflow(wf_type: str, api_keys: dict, add_as_rest_proxy_use
             "cluster_id": cluster_id,
             "sa_name": sa_name,
             "sa_id": sa_id,
-            "rest_proxy_user": rest_proxy_user
+            "allowed_in_rest_proxy": rest_proxy_user
         }
         secret_name = create_secret_name(
             env_id, cluster_id, sa_id, api_key_name, secret_name_prefix)
@@ -136,11 +194,14 @@ def run_aws_sec_mgr_workflow(wf_type: str, api_keys: dict, add_as_rest_proxy_use
                 "password": api_key["secret"]
             }
             if not out_secret:
-                create_secret(secret_name, secret_data, [
-                    {"Key": k, "Value": v} for k, v in tags_for_create.items()])
+                create_secret(secret_name, secret_data,
+                              render_secret_tags_format(tags_for_create))
             else:
                 update_secret(secret_name, out_secret["SecretString"], secret_data,
-                              [{"Key": k, "Value": v} for k, v in tags_for_create.items()])
+                              render_secret_tags_format(tags_for_create))
+            if add_as_rest_proxy_user:
+                add_secrets_to_rest_proxy_user(env_id, cluster_id, secret_name_prefix,
+                                               api_key["key"], api_key["secret"], rp_fe_user_filepath, tags_for_create, rest_proxy_user, proxy_user_string)
 
 
 if __name__ == '__main__':

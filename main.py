@@ -2,6 +2,7 @@ import argparse
 import base_ccloud
 import service_account
 import api_key_manager
+from sys import argv
 
 parser = argparse.ArgumentParser(
     description="Command line arguments for controlling the application", add_help=True, )
@@ -42,6 +43,10 @@ sm_args.add_argument('--secret-manager-type', type=str, default="aws-secretmanag
                      help="Provide the Secret Manager Type to use. Currently only supports the aws-secretsmanager but more will be added with time.",)
 sm_args.add_argument('--secret-name-prefix', type=str, metavar="prefix_for_secret_name", default=None,
                      help='If you need to add a prefix to the Secret name, it could be done with this switch.')
+sm_args.add_argument('--rest-proxy-secret-name-identifier', type=str, metavar="rest-proxy-user", required='--enable-connect-rest-source' in argv,
+                     help="The REST proxy identifier string in Secret Manager.",)
+sm_args.add_argument('--rest-proxy-basic-secret-file-path', type=str, metavar="/mnt/secrets/k8sSecretName/basic.txt", required='--enable-connect-rest-source' in argv,
+                     help="This is the path of the file that stores all the api keys & secrets for Kafka REST Proxy front end users. ",)
 
 args = parser.parse_args()
 
