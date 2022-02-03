@@ -172,10 +172,21 @@ if __name__ == "__main__":
     # This path will only get executed if the YAML files is passed in and
     # Generate YAML file is unchecked.
     else:
+        if csm_configs.secretstore.type == data_parser.SUPPORTED_STORES.AWS_SECRETS:
+            import aws_secrets_manager
+
+            secret_list = aws_secrets_manager.AWSSecretsList()
+            secret_list.read_all_secrets(
+                {
+                    "secret_manager": [
+                        "confluent_cloud",
+                    ],
+                }
+            )
         # Compare and generate the plan for execution
         csm_conf_store = CSMConfigDataMap()
         csm_conf_store.populate_data_map(
-            csm_definitions, ccloud_sa_list, ccloud_api_key_list, ccloud_cluster_list, csm_configs
+            csm_definitions, ccloud_sa_list, ccloud_api_key_list, ccloud_cluster_list, csm_configs, secret_list
         )
         printline()
         print("Execution Plan")
