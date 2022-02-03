@@ -1,0 +1,17 @@
+---
+configs:
+  ccloud_configs:
+    api_key: "env::CCLOUD_API_KEY"
+    api_secret: "env::CCLOUD_API_SECRET"
+    ccloud_user: "env::CONFLUENT_CLOUD_EMAIL"
+    ccloud_password: "env::CONFLUENT_CLOUD_PASSWORD"
+    # enable_sa_cleanup: true
+    # perform_shallow_check: true
+  secret_store:
+    enabled: true
+    type: aws-secretsmanager
+    configs:
+      - testing: "api_service"
+      - secret_token: "api_pat_token"
+      - secret_name_prefix: ""
+      - secret_name_separator: "/"
