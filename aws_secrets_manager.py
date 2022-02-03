@@ -103,6 +103,12 @@ class AWSSecretsList(CSMSecretsList):
     def __render_secret_tags_format(self, tags: dict):
         return [{"Key": k, "Value": v} for k, v in tags.items()]
 
+    def __flatten_secret_tags(self, tags: List[Dict[str, str]]) -> Dict[str, str]:
+        output = {}
+        for item in tags:
+            output[item["Key"]] = item["Value"]
+        return output
+
     def __create_digest(self, json_object_data):
         output = hashlib.md5(dumps(json_object_data, sort_keys=True).encode("utf-8")).hexdigest()
         return output
@@ -115,13 +121,12 @@ class AWSSecretsList(CSMSecretsList):
                 "AWS Secrets Manager List request failed. Please check the error and try again." + dumps(resp)
             )
         else:
-            # TODO: Implement caching from the response.
-            # self.add_to_cache()
-            pass
+            for item in resp["SecretList"]:
+                self.add_to_cache(item["Name"], None, self.__flatten_secret_tags(item["Tags"]))
 
     def add_to_cache(self, secret_name: str, secret_value: Dict[str, str], secret_tags: Dict[str, str]) -> AWSSecret:
-        self.sa[secret_name] = AWSSecret(secret_name, secret_value, secret_tags)
-        return self.sa[secret_name]
+        self.secret[secret_name] = AWSSecret(secret_name, secret_value, secret_tags)
+        return self.secret[secret_name]
 
     def find_secret(
         self, sa_name: str, sa_list: CCloudServiceAccountList, api_key_list: CCloudAPIKeyList
