@@ -5,9 +5,21 @@ import yaml
 import helpers
 from helpers import pretty as pp
 
-SUPPORTED_SECRET_STORES = [
-    "aws-secretsmanager",
-]
+
+class SupportedSecretStores:
+    AWS_SECRETS = "aws-secretsmanager"
+
+    def validate_store(self, secret_manager: str) -> Tuple[str, bool]:
+        if secret_manager == self.AWS_SECRETS:
+            return self.AWS_SECRETS, True
+        else:
+            return None, False
+
+    def list_supported_stores(self):
+        return [self.AWS_SECRETS]
+
+
+SUPPORTED_STORES = SupportedSecretStores()
 
 
 class CSMCCloudConfig:
@@ -32,8 +44,15 @@ class CSMCCloudConfig:
 class CSMSecretStoreConfig:
     def __init__(self, is_enabled: bool, type: str, configs: list) -> None:
         self.enabled = is_enabled
-        if type in SUPPORTED_SECRET_STORES:
-            self.type = type
+        store_type, isEnabled = SUPPORTED_STORES.validate_store(type)
+        if isEnabled:
+            self.type = store_type
+        else:
+            raise Exception(
+                type
+                + " secret store manager is not supported. The supported values are "
+                + ",".join(SUPPORTED_STORES.list_supported_stores())
+            )
         temp = {}
         for item in configs:
             for k, v in item.items():
