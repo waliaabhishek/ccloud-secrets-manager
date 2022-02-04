@@ -1,13 +1,10 @@
-from json import dumps
 from typing import Dict, Tuple
 from urllib import parse
 
 import requests
 
 import base_ccloud
-from helpers import pretty as pp
 
-SA_VALUE = {}
 
 
 class CCloudServiceAccount:
