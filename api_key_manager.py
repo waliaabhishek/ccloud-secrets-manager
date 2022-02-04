@@ -26,8 +26,6 @@ class CCloudAPIKey:
 
 class CCloudAPIKeyList:
     api_keys: Dict[str, CCloudAPIKey]
-    # __CMD_PIPE_SEP = " | "
-    # __CMD_OUT_SUPPRESS = " 1>/dev/null "
     __CMD_STDERR_TO_STDOUT = " 2>&1 "
 
     def __init__(self, sa_id_list: service_account.CCloudServiceAccountList) -> None:
