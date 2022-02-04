@@ -1,0 +1,20 @@
+---
+service_accounts:
+  - name: testing
+    description: "Service Account for testing teams"
+    enable_rest_proxy_access: true
+    team_email_address: "abc@abc.com"
+    api_key_access:
+      - FORCE_ALL_CLUSTERS
+  - name: testing2
+    description: "Service Account for testing2 team"
+    enable_rest_proxy_access: false
+    team_email_address: "abc@abc.com"
+    api_key_access:
+      - lkc-rzj29
+  - name: testing4
+    description: "Service Account for testing4 team"
+    enable_rest_proxy_access: false
+    team_email_address: "abc@abc.com"
+    api_key_access:
+      - lkc-rzj29

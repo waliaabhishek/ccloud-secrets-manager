@@ -3,4 +3,4 @@ __pycache__
 .vscode
 venv
 *.json
-configurations/test*.yaml
+configurations/test_output.yaml

@@ -1,121 +1,131 @@
-import pprint
-from json import dumps, loads
+from data_parser import CSMConfig
+from typing import Dict, List, Tuple
 from urllib import parse
 
 import requests
 
 import base_ccloud
 
-pp = pprint.PrettyPrinter(indent=2)
-SA_VALUE = {}
+
+class CCloudServiceAccount:
+    def __init__(self, res_id: str, name: str, description: str, created_at, updated_at, is_ignored: bool) -> None:
+        self.resource_id = res_id
+        self.name = name
+        self.description = description
+        self.created_at = created_at
+        self.updated_at = updated_at
+        self.is_ignored = is_ignored
 
 
-def cache_sa(url, params, value_dict):
-    resp = requests.get(url=url, auth=base_ccloud.BASIC_AUTH, params=params)
-    if resp.status_code == 200:
-        out_json = resp.json()
-        for item in out_json["data"]:
-            value_dict[item["id"]] = item
-        if 'next' in out_json['metadata']:
-            query_params = parse.parse_qs(
-                parse.urlsplit(out_json['metadata']['next']).query)
-            params['page_token'] = str(query_params['page_token'][0])
-            cache_sa(url=url, params=params, value_dict=value_dict)
-    else:
-        raise Exception("Could not connect to Confluent Cloud. Please check your settings. "
-                        + resp.text)
+class CCloudServiceAccountList:
 
+    sa: Dict[str, CCloudServiceAccount]
 
-def print_sa_table(sa_dict):
-    for v in sa_dict.values():
-        print("{:<15} {:<40} {:<50}".format(
-            v["id"], v["display_name"], v["description"]))
+    def __init__(self, ccloud_connection: base_ccloud.CCloudConnection, csm_config: CSMConfig) -> None:
+        uri = base_ccloud.URIDetails()
+        self.sa_url = uri.get_endpoint_url(uri.service_accounts)
+        self.auth = ccloud_connection.api_http_basic_auth
+        self.sa = {}
+        print("Gathering list of all Service Account(s) in CCloud.")
+        self.read_all_sa({"page_size": 50}, csm_config)
 
+    def __str__(self) -> str:
+        for item in self.sa.values():
+            print("{:<15} {:<40} {:<50}".format(item.resource_id, item.name, item.description))
 
-def check_existing_sa(sa_name, sa_dict):
-    for v in sa_dict.values():
-        if sa_name == v["display_name"]:
-            # print("Service Account already exists. Returning back the existing details.")
-            return v
-    return None
-
-
-def create_sa(sa_name):
-    print("No Existing Service Account found with name: " + sa_name)
-    print("Creating a new Service Account with name: " + sa_name)
-    payload = {
-        "display_name": sa_name,
-        "description": str("Account for " + sa_name + " created by CI/CD framework")
-    }
-    resp = requests.post(
-        url=str(base_ccloud.CCLOUD_URL + base_ccloud.URI_LIST['sa']), json=payload, auth=base_ccloud.BASIC_AUTH, )
-    sa_details = loads(resp.text)
-    pp.pprint(sa_details)
-    return sa_details
-
-
-def run_sa_workflow(svc_account_name="", create_account=False, force_new_account=False):
-    if not (svc_account_name):
-        raise Exception('Service Account name is missing')
-
-    sa_values = {}
-    cache_sa(base_ccloud.CCLOUD_URL + base_ccloud.URI_LIST['sa'],
-             {"page_size": 20}, value_dict=sa_values)
-    # print(len(sa_values))
-    # print_sa_table(sa_values)
-
-    sa_details = check_existing_sa(svc_account_name, sa_values)
-    if (force_new_account) and (sa_details is not None):
-        print("Service Account found with name " + svc_account_name +
-              " but --force-new-account flag is checked, so will try to create another account. ", )
-        for i in range(1, 99999):
-            temp_name = svc_account_name + str(i)
-            sa_check = check_existing_sa(temp_name, sa_values)
-            if sa_check is None:
-                svc_account_name = temp_name
-                sa_details = None
-                break
-            else:
-                print("Service account exists with name " +
-                      temp_name + " as well. Will keep retrying.")
-    if sa_details is None:
-        if create_account:
-            sa_details = create_sa(svc_account_name)
+    def __try_detect_internal_service_accounts(self, sa_name: str) -> bool:
+        if sa_name.startswith(("Connect.lcc-", "KSQL.lksqlc-")):
+            return True
         else:
-            print("Could not find a Service Account with display name " +
-                  svc_account_name + " and account creation was not allowed.")
-    else:
-        print("Service Account found with name " + svc_account_name)
-        pp.pprint(sa_details)
-    global SA_VALUE
-    SA_VALUE = sa_details
+            return False
 
-    if sa_details:
-        with open('sa_values.json', 'w', encoding="utf-8") as output_file:
-            output_file.write(dumps(sa_details))
-            print("The details of service account are added to " + output_file.name)
-    else:
-        print("Did not update/write the output file as service account was not found.")
+    # Read ALL Service Account details from Confluent Cloud
+    def read_all_sa(self, params, csm_config: CSMConfig):
+        resp = requests.get(url=self.sa_url, auth=self.auth, params=params)
+        if resp.status_code == 200:
+            out_json = resp.json()
+            for item in out_json["data"]:
+                print("Found Service Account " + item["id"] + " with name " + item["display_name"])
+                if (
+                    csm_config.ccloud.detect_ignore_ccloud_internal_accounts
+                    and self.__try_detect_internal_service_accounts(item["display_name"])
+                ):
+                    csm_config.ccloud.ignore_service_account_list.append(item["id"])
+                self.__add_to_cache(
+                    item["id"],
+                    item["display_name"],
+                    item["description"],
+                    item["metadata"]["created_at"],
+                    item["metadata"]["updated_at"],
+                    True if item["id"] in csm_config.ccloud.ignore_service_account_list else False,
+                )
+            if "next" in out_json["metadata"]:
+                query_params = parse.parse_qs(parse.urlsplit(out_json["metadata"]["next"]).query)
+                params["page_token"] = str(query_params["page_token"][0])
+                self.read_all_sa(params)
+            # pp.pprint(out_json)
+        else:
+            raise Exception("Could not connect to Confluent Cloud. Please check your settings. " + resp.text)
 
-    return SA_VALUE
+    def __add_to_cache(
+        self, res_id: str, name: str, description: str, created_at, updated_at, is_ignored: bool
+    ) -> CCloudServiceAccount:
+        self.sa[res_id] = CCloudServiceAccount(res_id, name, description, created_at, updated_at, is_ignored)
+        return self.sa[res_id]
 
+    # Read/Find one SA from the cache
+    def find_sa(self, sa_name):
+        for item in self.sa.values():
+            if sa_name == item.name:
+                return item
+        return None
 
-if __name__ == '__main__':
-    import argparse
-    parser = argparse.ArgumentParser(
-        description="Command line arguments for controlling the application", add_help=True, )
-    sa_args = parser.add_argument_group("sa-args", "Service Account Arguments")
-    sa_args.add_argument('--service-account-name', type=str, default="",
-                         help="Provide the name for which Service Account needs to be created.",)
-    sa_args.add_argument('--create-service-account-if-necessary', action="store_true", default=False,
-                         help="Provide the name for which Service Account needs to be created.",)
-    sa_args.add_argument('--force-new-account', action="store_true", default=False,
-                         help="Force Generate a new Service Account even if an account exists with the same Name",)
-    sa_args.add_argument('--add-as-rest-proxy-user', action="store_true", default=False,
-                         help="Add the Service Account to REST Proxy users",)
+    def __delete_from_cache(self, res_id):
+        self.sa.pop(res_id, None)
 
-    args = parser.parse_args()
+    # Create/Find one SA and add it to the cache, so that we do not have to refresh the cache manually
+    def create_sa(self, sa_name, description=None) -> Tuple[CCloudServiceAccount, bool]:
+        temp = self.find_sa(sa_name)
+        if temp:
+            return temp, False
+        # print("Creating a new Service Account with name: " + sa_name)
+        payload = {
+            "display_name": sa_name,
+            "description": str("Account for " + sa_name + " created by CI/CD framework")
+            if not description
+            else description,
+        }
+        resp = requests.post(
+            url=self.sa_url,
+            auth=self.auth,
+            json=payload,
+        )
+        if resp.status_code == 201:
+            sa_details = resp.json()
+            # pp.pprint(sa_details)
+            return (
+                self.__add_to_cache(
+                    sa_details["id"],
+                    sa_details["display_name"],
+                    sa_details["description"],
+                    sa_details["metadata"]["created_at"],
+                    sa_details["metadata"]["updated_at"],
+                    False,
+                ),
+                True,
+            )
+        else:
+            raise Exception("Could not connect to Confluent Cloud. Please check your settings. " + resp.text)
 
-    base_ccloud.initial_setup(False)
-    run_sa_workflow(args.service_account_name if hasattr(
-        args, "service_account_name") else "", True, args.force_new_account)
+    def delete_sa(self, sa_name) -> bool:
+        temp = self.find_sa(sa_name)
+        if not temp:
+            print("Did not find Service Account with name '" + sa_name + "'. Not deleting anything.")
+            return False
+        else:
+            resp = requests.delete(url=str(self.sa_url + "/" + temp.resource_id), auth=self.auth)
+            if resp.status_code == 204:
+                self.__delete_from_cache(temp.resource_id)
+                return True
+            else:
+                raise Exception("Could not perform the DELETE operation. Please check your settings. " + resp.text)

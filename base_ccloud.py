@@ -1,52 +1,33 @@
 from requests.auth import HTTPBasicAuth
-from os import environ
 
-CCLOUD_URL = "https://api.confluent.cloud"
-URI_LIST = {}
-CCLOUD_API_KEY = ""
-CCLOUD_API_SECRET = ""
-BASIC_AUTH = ""
-CONFLUENT_CLOUD_EMAIL = ""
-CONFLUENT_CLOUD_PASSWORD = ""
+from data_parser import CSMConfig
+from helpers import mandatory_check
 
 
-def initial_setup(setup_api_keys_for_clusters: bool):
-    global URI_LIST
-    URI_LIST = {
-        "environment": "/org/v2/environments",
-        "sa": "/iam/v2/service-accounts",
-        "apikey": "/iam/v2/api-keys",
-        "clusters": "/cmk/v2/clusters",
-    }
+class URIDetails:
+    base_url = "https://api.confluent.cloud"
+    environments = "/org/v2/environments"
+    service_accounts = "/iam/v2/service-accounts"
+    api_keys = "/iam/v2/api-keys"
+    clusters = "/cmk/v2/clusters"
 
-    if environ.get("CCLOUD_API_KEY") is None:
-        raise Exception(
-            'Please populate CCLOUD_API_KEY with the Cloud resource type API Key value')
-    else:
-        global CCLOUD_API_KEY
-        CCLOUD_API_KEY = environ['CCLOUD_API_KEY']
+    def get_endpoint_url(self, key="/"):
+        return self.base_url + key
 
-    if environ.get("CCLOUD_API_SECRET") is None:
-        raise Exception(
-            'Please populate CCLOUD_API_SECRET with the Cloud resource type API Secret value')
-    else:
-        global CCLOUD_API_SECRET
-        CCLOUD_API_SECRET = environ['CCLOUD_API_SECRET']
 
-    global BASIC_AUTH
-    BASIC_AUTH = HTTPBasicAuth(CCLOUD_API_KEY, CCLOUD_API_SECRET)
+class CCloudConnection:
+    uri = URIDetails()
 
-    if setup_api_keys_for_clusters:
-        if environ.get("CONFLUENT_CLOUD_EMAIL") is None:
-            raise Exception(
-                'Please populate CONFLUENT_CLOUD_EMAIL environment variable with a CCloud Username')
-        else:
-            global CONFLUENT_CLOUD_EMAIL
-            CCLOUD_API_SECRET = environ['CONFLUENT_CLOUD_EMAIL']
+    def __init__(self, csm_configs: CSMConfig) -> None:
+        print("Checking for Mandatory parameters")
+        mandatory_check("api_key", csm_configs.ccloud.api_key)
+        mandatory_check("api_secret", csm_configs.ccloud.api_secret)
+        self.api_http_basic_auth = HTTPBasicAuth(csm_configs.ccloud.api_key, csm_configs.ccloud.api_secret)
+        mandatory_check("ccloud_user", csm_configs.ccloud.ccloud_user)
+        self.ccloud_user = csm_configs.ccloud.ccloud_user
+        mandatory_check("ccloud_password", csm_configs.ccloud.ccloud_password)
+        self.ccloud_pass = csm_configs.ccloud.ccloud_password
+        print("All Good. Moving forward.")
 
-        if environ.get("CONFLUENT_CLOUD_PASSWORD") is None:
-            raise Exception(
-                'Please populate CONFLUENT_CLOUD_PASSWORD environment variable with a CCloud Password')
-        else:
-            global CONFLUENT_CLOUD_PASSWORD
-            CCLOUD_API_SECRET = environ['CONFLUENT_CLOUD_PASSWORD']
+    def get_endpoint_url(self, key="/"):
+        return self.uri.base_url + key
