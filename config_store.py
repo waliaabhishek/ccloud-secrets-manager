@@ -1,10 +1,10 @@
-from aws_secrets_manager import CSMSecretsList
 from enum import Enum
 from typing import OrderedDict
 
 import data_parser
 from api_key_manager import CCloudAPIKeyList
 from clusters import CCloudClusterList
+from secrets_manager_interface import CSMSecretsList
 from service_account import CCloudServiceAccountList
 
 
