@@ -19,7 +19,7 @@ client = boto3.client("secretsmanager")
 
 class AWSSecret(CSMSecret):
     def __init__(self, secret_name: str, secret_value: Dict[str, str], secret_tags: Dict[str, str]) -> None:
-        super.__init__(
+        super().__init__(
             secret_name,
             secret_value,
             secret_tags["env_id"],
