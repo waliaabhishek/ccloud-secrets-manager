@@ -16,4 +16,4 @@ RUN curl -sL --http1.1 https://cnfl.io/cli | sh -s -- -b /usr/local/bin latest
 # Add both to the path for easy access
 RUN export PATH=/usr/local/bin:$PATH
 
-ENTRYPOINT [ "python", "main.py" ]
+ENTRYPOINT [ "python", "main_yaml_runner.py", "--csm-config-file-path", "configurations/config.yaml", "--csm-definitions-file-path", "configurations/definitions.yaml", "--print-delete-eligible-api-keys", "--dry-run" ]
