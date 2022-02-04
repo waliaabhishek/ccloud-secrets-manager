@@ -1,5 +1,7 @@
-from abc import ABC, abstractmethod
+from data_parser import CSMConfig, CSMDefinitions
 import hashlib
+import pprint
+from abc import ABC, abstractmethod
 from json import dumps, loads
 from typing import Dict, List
 
@@ -11,6 +13,7 @@ from api_key_manager import CCloudAPIKey, CCloudAPIKeyList
 from clusters import CCloudClusterList, CCloudEnvironmentList
 from service_account import CCloudServiceAccountList
 
+pp = pprint.PrettyPrinter(indent=2)
 client = boto3.client("secretsmanager")
 
 
@@ -43,7 +46,7 @@ class CSMSecretsList(ABC):
     def create_secret_name_string(
         self, secret_name_prefix: str, seperator: str, env_id: str, cluster_id: str, sa_id: str
     ):
-        seperator = "/"
+        # seperator = "/"
         # secretName = env_name + sep + cluster_name + sep + sa_name
         secret_name = (
             (str(seperator + secret_name_prefix) if secret_name_prefix else "")
@@ -63,9 +66,7 @@ class CSMSecretsList(ABC):
         pass
 
     @abstractmethod
-    def find_secret(
-        self, sa_name: str, sa_list: CCloudServiceAccountList, api_key_list: CCloudAPIKeyList
-    ) -> List[CSMSecret]:
+    def find_secret(self, sa_name: str, sa_list: CCloudServiceAccountList, cluster_id: str = None) -> List[CSMSecret]:
         pass
 
     @abstractmethod
@@ -97,17 +98,13 @@ class AWSSecretsList(CSMSecretsList):
         for k, v in filter.items():
             output_filter.append({"Key": "tag-key", "Values": [k]})
             output_filter.append({"Key": "tag-value", "Values": v})
-        # output_filter = [{"Key": "tag-key", "Values": k},{"Key": "tag-value", "Values": v} for k, v in filter.items()]
         return output_filter
 
     def __render_secret_tags_format(self, tags: dict):
-        return [{"Key": k, "Value": v} for k, v in tags.items()]
+        return [{"Key": str(k), "Value": str(v)} for k, v in tags.items()]
 
     def __flatten_secret_tags(self, tags: List[Dict[str, str]]) -> Dict[str, str]:
-        output = {}
-        for item in tags:
-            output[item["Key"]] = item["Value"]
-        return output
+        return {item["Key"]: item["Value"] for item in tags}
 
     def __create_digest(self, json_object_data):
         output = hashlib.md5(dumps(json_object_data, sort_keys=True).encode("utf-8")).hexdigest()
@@ -128,14 +125,12 @@ class AWSSecretsList(CSMSecretsList):
         self.secret[secret_name] = AWSSecret(secret_name, secret_value, secret_tags)
         return self.secret[secret_name]
 
-    def find_secret(
-        self, sa_name: str, sa_list: CCloudServiceAccountList, api_key_list: CCloudAPIKeyList
-    ) -> List[AWSSecret]:
+    def find_secret(self, sa_name: str, sa_list: CCloudServiceAccountList, cluster_id: str = None) -> List[AWSSecret]:
         temp_sa = sa_list.find_sa(sa_name)
-        # temp_api_key_list = api_key_list.find_keys_with_sa(sa_name)
-        sa_id = temp_sa.resource_id
-        for item in api_key_list.find_keys_with_sa(sa_name):
-            pass
+        if cluster_id:
+            return [v for v in self.secret.values() if v.sa_id == temp_sa.resource_id and v.cluster_id == cluster_id]
+        else:
+            return [v for v in self.secret.values() if v.sa_id == temp_sa.resource_id]
 
     def get_secret(self, secret_name: str):
         try:
@@ -158,10 +153,20 @@ class AWSSecretsList(CSMSecretsList):
         env_list: CCloudEnvironmentList,
         cluster_list: CCloudClusterList,
         sa_list: CCloudServiceAccountList,
+        csm_definitions: CSMDefinitions,
+        csm_config: CSMConfig,
     ) -> AWSSecret:
         cluster = cluster_list.find_cluster(api_key.cluster_id)
         env = env_list.find_environment(cluster.env_id)
-        secret_name = self.create_secret_name_string(None, "/", env.env_id, cluster.cluster_id, api_key.owner_id)
+
+        secret_name = self.create_secret_name_string(
+            csm_config.secretstore.configs.get("secret_name_prefix", ""),
+            csm_config.secretstore.configs.get("secret_name_separator", "/"),
+            env.env_id,
+            cluster.cluster_id,
+            api_key.owner_id,
+        )
+        def_details = csm_definitions.find_service_account(sa_list.sa[api_key.owner_id].name)
         secret_tags = {
             "secret_manager": "confluent_cloud",
             "env_name": env.display_name,
@@ -170,8 +175,7 @@ class AWSSecretsList(CSMSecretsList):
             "cluster_id": api_key.cluster_id,
             "sa_name": sa_list.sa[api_key.owner_id].name,
             "sa_id": api_key.owner_id,
-            # TODO: Enable REST Proxy access implementation is still needed
-            "allowed_in_rest_proxy": False,
+            "allowed_in_rest_proxy": def_details.rp_access,
         }
         secret_data = self.get_secret(secret_name)
         secret_value = {"username": api_key.api_key, "password": api_key.api_secret}
