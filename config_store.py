@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import OrderedDict
+from typing import OrderedDict, Set, Tuple
 
 import data_parser
 from api_key_manager import CCloudAPIKeyList
@@ -64,22 +64,19 @@ class CSMConfigDataMap:
             if v.status == CSMConfigTaskStatus.sts_not_started:
                 yield k, v
 
-    def populate_data_map(
+    def populate_service_account_tasks(
         self,
-        definitions: data_parser.CSMDefinitions,
-        ccloud_sa_details: CCloudServiceAccountList,
-        ccloud_api_key_details: CCloudAPIKeyList,
-        ccloud_clusters: CCloudClusterList,
         csm_configs: data_parser.CSMConfig,
-        secret_list: CSMSecretsList,
+        csm_definitions: data_parser.CSMDefinitions,
+        ccloud_sa_details: CCloudServiceAccountList,
     ):
-        #  Analyze and set up tasks for Service Account management
-        sa_in_def = set([v.name for v in definitions.sa])
+        sa_in_def = set([v.name for v in csm_definitions.sa])
         sa_in_ccloud = set([v.name for v in ccloud_sa_details.sa.values()])
         create_req = set(sa_in_def).difference(sa_in_ccloud)
         delete_req = set(sa_in_ccloud).difference(sa_in_def)
+
         for item in create_req:
-            sa = definitions.find_service_account(item)
+            sa = csm_definitions.find_service_account(item)
             if sa:
                 self.add_new_task(
                     CSMConfigTaskType.create_task,
@@ -97,19 +94,28 @@ class CSMConfigDataMap:
                     CSMConfigTaskStatus.sts_not_started,
                     {"sa_name": item},
                 )
-        del sa_in_def, sa_in_ccloud, create_req, delete_req
 
-        # Analyze and setup tasks for API Key management
+    def populate_api_key_tasks(
+        self,
+        csm_definitions: data_parser.CSMDefinitions,
+        ccloud_sa_details: CCloudServiceAccountList,
+        ccloud_api_key_details: CCloudAPIKeyList,
+        ccloud_clusters: CCloudClusterList,
+        secret_list: CSMSecretsList,
+    ) -> Tuple[Set[str], Set[str]]:
         api_keys_in_def, api_keys_in_ccloud = set(), set()
         secrets_in_store = set()
-        for sa in definitions.sa:
+        for sa in csm_definitions.sa:
             if "FORCE_ALL_CLUSTERS" in sa.cluster_list:
                 api_keys_in_def.update(["~".join([sa.name, v.cluster_id]) for v in ccloud_clusters.cluster.values()])
             else:
                 api_keys_in_def.update(["~".join([sa.name, v]) for v in sa.cluster_list])
-            sa_id = ccloud_sa_details.find_sa(sa)
+            sa_id = ccloud_sa_details.find_sa(sa.name)
             api_keys_in_ccloud.update(
-                ["~".join([sa.name, v.cluster_id]) for v in ccloud_api_key_details.find_keys_with_sa(sa_id)]
+                [
+                    "~".join([sa.name, v.cluster_id])
+                    for v in ccloud_api_key_details.find_keys_with_sa(getattr(sa_id, "resource_id", None))
+                ]
             )
         create_api_keys_req = api_keys_in_def.difference(api_keys_in_ccloud)
         secrets_in_store.update(["~".join([v.sa_name, v.cluster_id]) for v in secret_list.secret.values()])
@@ -135,9 +141,14 @@ class CSMConfigDataMap:
                 CSMConfigTaskStatus.sts_not_started,
                 {"sa_name": sa_name, "cluster_id": cluster_details.cluster_id, "env_id": cluster_details.env_id},
             )
-        del api_keys, cluster_details, sa_details, sa_name, cluster_id, value
+        return create_secrets_req, update_secrets_req
 
-        # Analyze and setup tasks for Secret Store
+    def populate_secrets_tasks(
+        self,
+        create_secrets_req: Set[str],
+        update_secrets_req: Set[str],
+        ccloud_clusters: CCloudClusterList,
+    ):
         for item in create_secrets_req:
             value = item.split("~", 1)
             sa_name, cluster_id = value[0], value[1]
@@ -159,6 +170,26 @@ class CSMConfigDataMap:
                 CSMConfigTaskStatus.sts_not_started,
                 {"sa_name": sa_name, "cluster_id": cluster_id, "env_id": cluster_details.env_id},
             )
+
+    def populate_data_map(
+        self,
+        definitions: data_parser.CSMDefinitions,
+        ccloud_sa_details: CCloudServiceAccountList,
+        ccloud_api_key_details: CCloudAPIKeyList,
+        ccloud_clusters: CCloudClusterList,
+        csm_configs: data_parser.CSMConfig,
+        secret_list: CSMSecretsList,
+    ):
+        #  Analyze and set up tasks for Service Account management
+        self.populate_service_account_tasks(csm_configs, definitions, ccloud_sa_details)
+
+        # Analyze and setup tasks for API Key management
+        create_secrets_req, update_secrets_req = self.populate_api_key_tasks(
+            definitions, ccloud_sa_details, ccloud_api_key_details, ccloud_clusters, secret_list
+        )
+
+        # Analyze and setup tasks for Secret Store
+        self.populate_secrets_tasks(create_secrets_req, update_secrets_req, ccloud_clusters)
 
     def print_data_map(self, include_create: bool = True, include_delete: bool = True):
         print("=" * 80)
