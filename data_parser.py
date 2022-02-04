@@ -39,9 +39,11 @@ class CSMCCloudConfig:
 
 
 class CSMSecretStoreConfig:
-    def __init__(self, is_enabled: bool, type: str, configs: list) -> None:
+    def __init__(self, is_enabled: bool, type: str, configs: list, prefix: str = "", separator: str = "/") -> None:
         self.enabled = is_enabled
         store_type, isEnabled = SUPPORTED_STORES.validate_store(type)
+        self.prefix = prefix
+        self.separator = separator
         if isEnabled:
             self.type = store_type
         else:
@@ -70,8 +72,10 @@ class CSMConfig:
     def add_ccloud_configs(self, api_key, api_secret, ccloud_user, ccloud_pass, enable_sa_cleanup=False):
         self.ccloud = CSMCCloudConfig(api_key, api_secret, ccloud_user, ccloud_pass, enable_sa_cleanup)
 
-    def add_secret_store_configs(self, is_enabled: bool, type: str, configs: list):
-        self.secretstore = CSMSecretStoreConfig(is_enabled, type, configs)
+    def add_secret_store_configs(
+        self, is_enabled: bool, type: str, configs: list, prefix: str = "", separator: str = "/"
+    ):
+        self.secretstore = CSMSecretStoreConfig(is_enabled, type, configs, prefix, separator)
 
 
 class CSMServiceAccount:
@@ -122,7 +126,9 @@ def load_parse_yamls(
         temp["enable_sa_cleanup"] if "enable_sa_cleanup" in temp else False,
     )
     temp = csm_config["configs"]["secret_store"]
-    csm.add_secret_store_configs(temp["enabled"], temp["type"], temp["configs"])
+    csm.add_secret_store_configs(
+        temp["enabled"], temp["type"], temp["configs"], temp.get("prefix", ""), temp.get("separator", "/")
+    )
 
     if not generate_def_yaml:
         print("Trying to parse Definitions File: " + def_yaml_path)
