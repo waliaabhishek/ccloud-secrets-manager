@@ -23,7 +23,16 @@ SUPPORTED_STORES = SupportedSecretStores()
 
 
 class CSMCCloudConfig:
-    def __init__(self, api_key, api_secret, ccloud_user, ccloud_pass, enable_sa_cleanup=False) -> None:
+    def __init__(
+        self,
+        api_key,
+        api_secret,
+        ccloud_user,
+        ccloud_pass,
+        ignore_service_account_list: List[str],
+        detect_ignore_ccloud_internal_accounts,
+        enable_sa_cleanup=False,
+    ) -> None:
         self.__check_pair("api_key", api_key, "api_secret", api_secret)
         self.api_key = api_key
         self.api_secret = api_secret
@@ -31,6 +40,8 @@ class CSMCCloudConfig:
         self.ccloud_user = ccloud_user
         self.ccloud_password = ccloud_pass
         self.enable_sa_cleanup = enable_sa_cleanup
+        self.detect_ignore_ccloud_internal_accounts = detect_ignore_ccloud_internal_accounts
+        self.ignore_service_account_list: List[str] = ignore_service_account_list
 
     def __check_pair(self, key1Name, key1Value, key2Name, key2Value):
         if (key1Value and not key2Value) or (not key1Value and key2Value) or (not key1Value and not key2Value):
@@ -69,8 +80,25 @@ class CSMConfig:
     def __init__(self) -> None:
         pass
 
-    def add_ccloud_configs(self, api_key, api_secret, ccloud_user, ccloud_pass, enable_sa_cleanup=False):
-        self.ccloud = CSMCCloudConfig(api_key, api_secret, ccloud_user, ccloud_pass, enable_sa_cleanup)
+    def add_ccloud_configs(
+        self,
+        api_key,
+        api_secret,
+        ccloud_user,
+        ccloud_pass,
+        ignore_service_account_list,
+        detect_ignore_ccloud_internal_accounts,
+        enable_sa_cleanup=False,
+    ):
+        self.ccloud = CSMCCloudConfig(
+            api_key,
+            api_secret,
+            ccloud_user,
+            ccloud_pass,
+            ignore_service_account_list,
+            detect_ignore_ccloud_internal_accounts,
+            enable_sa_cleanup,
+        )
 
     def add_secret_store_configs(
         self, is_enabled: bool, type: str, configs: list, prefix: str = "", separator: str = "/"
@@ -117,14 +145,16 @@ def load_parse_yamls(
 
     csm = CSMConfig()
     temp = csm_config["configs"]["ccloud_configs"]
-
     csm.add_ccloud_configs(
         temp["api_key"],
         temp["api_secret"],
         temp["ccloud_user"],
         temp["ccloud_password"],
+        temp["ignore_service_account_list"] if "ignore_service_account_list" in temp else None,
+        temp["detect_ignore_ccloud_internal_accounts"] if "detect_ignore_ccloud_internal_accounts" in temp else False,
         temp["enable_sa_cleanup"] if "enable_sa_cleanup" in temp else False,
     )
+
     temp = csm_config["configs"]["secret_store"]
     csm.add_secret_store_configs(
         temp["enabled"], temp["type"], temp["configs"], temp.get("prefix", ""), temp.get("separator", "/")
