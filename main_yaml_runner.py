@@ -1,3 +1,4 @@
+from api_key_reconciliation import find_api_keys_eligible_for_deletion
 import argparse
 
 import yaml
@@ -153,6 +154,12 @@ if __name__ == "__main__":
         action="store_true",
         help="This switch can be used to disable API Key & Secret creation (if required)",
     )
+    conf_args.add_argument(
+        "--print-delete-eligible-api-keys",
+        default=False,
+        action="store_true",
+        help="This switch can be used to print the API keys which are not synced to the Secret store and (potentially) not used.",
+    )
 
     args = parser.parse_args()
 
@@ -172,14 +179,13 @@ if __name__ == "__main__":
     ccloud_cluster_list = CCloudClusterList(ccloud_conn, ccloud_env_list)
     printline()
     # Gather Service Account details pre-existing in CCloud
-    ccloud_sa_list = CCloudServiceAccountList(ccloud_conn)
+    ccloud_sa_list = CCloudServiceAccountList(ccloud_conn, csm_configs)
     printline()
-    # ccloud_reduced_sa_list = copy.deepcopy(ccloud_sa_list)
-    # def_sa_list = set([v.name for v in csm_definitions.sa])
-    # for k, v in ccloud_sa_list.sa.items():
-    #     if v.name not in def_sa_list:
-    #         ccloud_reduced_sa_list.sa.pop(k, None)
-    # Gather API Key details pre-existing in CCloud
+    print("List of ignored accounts: ")
+    for item in csm_configs.ccloud.ignore_service_account_list:
+        sa_details = ccloud_sa_list.sa[item]
+        print("SA ID: " + sa_details.resource_id + "\t\t SA Name: " + sa_details.name)
+    printline()
     ccloud_api_key_list = CCloudAPIKeyList(ccloud_sa_list)
     printline()
     # If the Generate YAML is True, we will parse the data and render a YAML file
@@ -220,4 +226,18 @@ if __name__ == "__main__":
         #  Dry Run
         else:
             print("Dry Run was selected. Plan will not be executed")
-    print("")
+        printline()
+
+        if args.print_delete_eligible_api_keys:
+            key_list = find_api_keys_eligible_for_deletion(
+                secret_list,
+                ccloud_api_key_list,
+                csm_configs.ccloud.ignore_service_account_list,
+            )
+            if key_list:
+                print("Found API Keys that are missing in the secret store but are currently (still) active in CCloud")
+                ccloud_api_key_list.print_api_keys(ccloud_sa_list, key_list)
+            else:
+                print("No deletion eligible keys detected.")
+
+    printline()
