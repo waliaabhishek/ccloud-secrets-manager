@@ -1,5 +1,4 @@
 import argparse
-import copy
 
 import yaml
 
@@ -83,8 +82,21 @@ def api_key_manager_workflow(k: int, v: CSMConfigTask):
         )
 
 
-def aws_secrets_workflow_manager():
-    pass
+def secrets_workflow_manager(k: int, v: CSMConfigTask):
+    if v.task_type == CSMConfigTaskType.create_task:
+        print(
+            "Storing the newly created API Key/Secret in Secret Store for Service Account: " + v.task_object["sa_name"]
+        )
+        csm_conf_store.set_task_status(k, CSMConfigTaskStatus.sts_in_progress, "Secret Store Addition in progress.")
+        sa_details = ccloud_sa_list.find_sa(v.task_object["sa_name"])
+        api_key_details = ccloud_api_key_list.find_keys_with_sa_and_cluster(
+            sa_details.resource_id, v.task_object["cluster_id"]
+        )
+        for item in api_key_details:
+            if item.api_secret:
+                secret_list.create_or_update_secret(
+                    item, ccloud_env_list, ccloud_cluster_list, ccloud_sa_list, csm_definitions, csm_configs
+                )
 
 
 def run_workflow():
@@ -96,8 +108,8 @@ def run_workflow():
         # If the task is related to API Keys
         elif v.object_type == CSMConfigObjectType.api_key_type:
             api_key_manager_workflow(k, v)
-        elif v.object_type == CSMConfigObjectType.aws_secret_type:
-            pass
+        elif v.object_type == CSMConfigObjectType.secret_store_type:
+            secrets_workflow_manager(k, v)
 
 
 if __name__ == "__main__":
@@ -156,15 +168,13 @@ if __name__ == "__main__":
     # Gather Service Account details pre-existing in CCloud
     ccloud_sa_list = CCloudServiceAccountList(ccloud_conn)
     printline()
-    ccloud_reduced_sa_list = copy.deepcopy(ccloud_sa_list)
-    def_sa_list = set([v.name for v in csm_definitions.sa])
-    for k, v in ccloud_sa_list.sa.items():
-        if v.name not in def_sa_list:
-            ccloud_reduced_sa_list.sa.pop(k, None)
+    # ccloud_reduced_sa_list = copy.deepcopy(ccloud_sa_list)
+    # def_sa_list = set([v.name for v in csm_definitions.sa])
+    # for k, v in ccloud_sa_list.sa.items():
+    #     if v.name not in def_sa_list:
+    #         ccloud_reduced_sa_list.sa.pop(k, None)
     # Gather API Key details pre-existing in CCloud
-    ccloud_api_key_list = CCloudAPIKeyList(
-        ccloud_reduced_sa_list if csm_configs.ccloud.perform_shallow_check else ccloud_sa_list
-    )
+    ccloud_api_key_list = CCloudAPIKeyList(ccloud_sa_list)
     printline()
     # If the Generate YAML is True, we will parse the data and render a YAML file
     if args.csm_generate_definitions_file:
