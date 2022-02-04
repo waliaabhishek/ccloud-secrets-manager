@@ -24,7 +24,7 @@ class CSMConfigTaskType(Enum):
 class CSMConfigObjectType(Enum):
     sa_type = "service-account"
     api_key_type = "api-key"
-    aws_secret_type = "aws-secrets"
+    secret_store_type = "secrets-store"
 
 
 class CSMConfigTask:
@@ -73,7 +73,7 @@ class CSMConfigDataMap:
         csm_configs: data_parser.CSMConfig,
         secret_list: CSMSecretsList,
     ):
-        #  Analyse and set up tasks for Service Account management
+        #  Analyze and set up tasks for Service Account management
         sa_in_def = set([v.name for v in definitions.sa])
         sa_in_ccloud = set([v.name for v in ccloud_sa_details.sa.values()])
         create_req = set(sa_in_def).difference(sa_in_ccloud)
@@ -99,8 +99,9 @@ class CSMConfigDataMap:
                 )
         del sa_in_def, sa_in_ccloud, create_req, delete_req
 
-        # Analyse and setup tasks for API Key management
+        # Analyze and setup tasks for API Key management
         api_keys_in_def, api_keys_in_ccloud = set(), set()
+        secrets_in_store = set()
         for sa in definitions.sa:
             if "FORCE_ALL_CLUSTERS" in sa.cluster_list:
                 api_keys_in_def.update(["~".join([sa.name, v.cluster_id]) for v in ccloud_clusters.cluster.values()])
@@ -110,8 +111,17 @@ class CSMConfigDataMap:
             api_keys_in_ccloud.update(
                 ["~".join([sa.name, v.cluster_id]) for v in ccloud_api_key_details.find_keys_with_sa(sa_id)]
             )
-        create_req = set(api_keys_in_def).difference(api_keys_in_ccloud)
-        for item in create_req:
+        create_api_keys_req = api_keys_in_def.difference(api_keys_in_ccloud)
+        secrets_in_store.update(["~".join([v.sa_name, v.cluster_id]) for v in secret_list.secret.values()])
+        create_secrets_req = api_keys_in_def.difference(secrets_in_store)
+        update_secrets_req = create_api_keys_req.intersection(secrets_in_store)
+        # This is needed if the Secret does not exist but an API key exists for the cluster.
+        # As the secret cannot be retrieved after the first time its created, there is no way
+        # to inject the secret to a Secret store in case of any failures. The API Key will need
+        # to be freshly created and synced to the Secret Store.
+        force_api_key_create = create_secrets_req.difference(create_api_keys_req)
+        create_api_keys_req.update(force_api_key_create)
+        for item in create_api_keys_req:
             value = item.split("~", 1)
             sa_name, cluster_id = value[0], value[1]
             sa_details = ccloud_sa_details.find_sa(sa_name)
@@ -119,20 +129,36 @@ class CSMConfigDataMap:
             api_keys = ccloud_api_key_details.find_keys_with_sa_and_cluster(
                 getattr(sa_details, "resource_id", None), cluster_details.cluster_id
             )
-            if not api_keys:
-                self.add_new_task(
-                    CSMConfigTaskType.create_task,
-                    CSMConfigObjectType.api_key_type,
-                    CSMConfigTaskStatus.sts_not_started,
-                    {"sa_name": sa_name, "cluster_id": cluster_details.cluster_id, "env_id": cluster_details.env_id},
-                )
-                # self.add_new_task(
-                #     CSMConfigTaskType.create_task,
-                #     CSMConfigObjectType.aws_secret_type,
-                #     CSMConfigTaskStatus.sts_not_started,
-                #     {"sa_name": sa_name, "cluster_id": cluster_details.cluster_id, "env_id": cluster_details.env_id},
-                # )
+            self.add_new_task(
+                CSMConfigTaskType.create_task,
+                CSMConfigObjectType.api_key_type,
+                CSMConfigTaskStatus.sts_not_started,
+                {"sa_name": sa_name, "cluster_id": cluster_details.cluster_id, "env_id": cluster_details.env_id},
+            )
         del api_keys, cluster_details, sa_details, sa_name, cluster_id, value
+
+        # Analyze and setup tasks for Secret Store
+        for item in create_secrets_req:
+            value = item.split("~", 1)
+            sa_name, cluster_id = value[0], value[1]
+            cluster_details = ccloud_clusters.find_cluster(cluster_id)
+            # secret_details = secret_list.find_secret(sa_name, ccloud_sa_details, cluster_id)
+            self.add_new_task(
+                CSMConfigTaskType.create_task,
+                CSMConfigObjectType.secret_store_type,
+                CSMConfigTaskStatus.sts_not_started,
+                {"sa_name": sa_name, "cluster_id": cluster_id, "env_id": cluster_details.env_id},
+            )
+        for item in update_secrets_req:
+            value = item.split("~", 1)
+            sa_name, cluster_id = value[0], value[1]
+            cluster_details = ccloud_clusters.find_cluster(cluster_id)
+            self.add_new_task(
+                CSMConfigTaskType.update_task,
+                CSMConfigObjectType.secret_store_type,
+                CSMConfigTaskStatus.sts_not_started,
+                {"sa_name": sa_name, "cluster_id": cluster_id, "env_id": cluster_details.env_id},
+            )
 
     def print_data_map(self, include_create: bool = True, include_delete: bool = True):
         print("=" * 80)
