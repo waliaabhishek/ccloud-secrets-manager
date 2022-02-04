@@ -1,86 +1,160 @@
 import pprint
-from json import loads, dumps
 import subprocess
+from datetime import datetime
+from json import dumps, loads
 from operator import itemgetter
+from typing import Dict, List
 
 import base_ccloud
 import clusters
 import service_account
 
 pp = pprint.PrettyPrinter(indent=2)
-CMD_PIPE_SEP = " | "
-CMD_OUT_SUPPRESS = " 1>/dev/null "
-CMD_STDERR_TO_STDOUT = " 2>&1 "
-SA_API_KEYS = {}
-OUTPUT_API_KEYS = {}
-OUTPUT_NEWLY_CREATED_KEYS = {}
 
 
-def int_execute_subcommand(command):
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
-    out = process.communicate()[0].strip()
-    return out.decode('UTF-8')
+class CCloudAPIKey:
+    def __init__(
+        self, api_key: str, api_secret: str, api_key_description: str, owner_id: str, cluster_id: str, created_at
+    ) -> None:
+        self.api_key = api_key
+        self.api_secret = api_secret
+        self.api_key_description = api_key_description
+        self.owner_id = owner_id
+        self.cluster_id = cluster_id
+        self.created_at = created_at
 
 
-def int_confluent_cli_login():
-    cmd_login = "confluent login" + CMD_STDERR_TO_STDOUT
-    output = int_execute_subcommand(cmd_login)
-    if output != "":
-        raise Exception(
-            "Could not login into Confluent Cloud CLI. Please ensure that the credentials are correct."
-            + output)
+class CCloudAPIKeyList:
+    api_keys: Dict[str, CCloudAPIKey]
+    # __CMD_PIPE_SEP = " | "
+    # __CMD_OUT_SUPPRESS = " 1>/dev/null "
+    __CMD_STDERR_TO_STDOUT = " 2>&1 "
 
+    def __init__(self, sa_id_list: service_account.CCloudServiceAccountList) -> None:
+        self.api_keys = {}
+        print("Gathering list of all API Key(s) for all Service Account(s) in CCloud.")
+        self.__read_all_api_keys(sa_id_list)
 
-def int_confluent_cli_set_env(env_id):
-    cmd_set_env = "confluent environment use " + env_id
-    output = int_execute_subcommand(cmd_set_env)
-    if not output.startswith('Now using "' + env_id + '" as the default (active) environment.'):
-        raise Exception("Could not set the current environment to " + env_id +
-                        ". Please fix all the issues before trying again. " + output)
+    def __execute_subcommand(self, command):
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
+        out = process.communicate()[0].strip()
+        return out.decode("UTF-8")
 
+    def __confluent_cli_login(self):
+        cmd_login = "confluent login" + self.__CMD_STDERR_TO_STDOUT
+        output = self.__execute_subcommand(cmd_login)
+        if output != "" and not output.startswith("A minor version update is available"):
+            raise Exception(
+                "Could not login into Confluent Cloud CLI. Please ensure that the credentials are correct." + output
+            )
 
-def int_confluent_cli_set_cluster(cluster_id):
-    cmd_set_cluster = "confluent kafka cluster use " + \
-        cluster_id + CMD_STDERR_TO_STDOUT
-    output = int_execute_subcommand(cmd_set_cluster)
-    if not output.startswith('Set Kafka cluster "' + cluster_id + '"'):
-        raise Exception("Could not set the current cluster to " + cluster_id +
-                        ". Please fix al the issues before trying again. " + output)
+    def __confluent_cli_set_env(self, env_id):
+        cmd_set_env = "confluent environment use " + env_id
+        output = self.__execute_subcommand(cmd_set_env)
+        if not output.startswith('Now using "' + env_id + '" as the default (active) environment.'):
+            raise Exception(
+                "Could not set the current environment to "
+                + env_id
+                + ". Please fix all the issues before trying again. "
+                + output
+            )
 
+    def __confluent_cli_set_cluster(self, cluster_id):
+        cmd_set_cluster = "confluent kafka cluster use " + cluster_id + self.__CMD_STDERR_TO_STDOUT
+        output = self.__execute_subcommand(cmd_set_cluster)
+        if not output.startswith('Set Kafka cluster "' + cluster_id + '"'):
+            raise Exception(
+                "Could not set the current cluster to "
+                + cluster_id
+                + ". Please fix al the issues before trying again. "
+                + output
+            )
 
-def int_confluent_cli_get_api_key_list(sa_id):
-    cmd_api_key_list = "confluent api-key list -o json --service-account " + sa_id
-    output = loads(int_execute_subcommand(cmd_api_key_list))
-    output = sorted(output, key=itemgetter('created'), reverse=True)
-    global SA_API_KEYS
-    SA_API_KEYS = output
+    # This method will help reading all the API Keys that are already provisioned.
+    # Please note that the API Secrets cannot be read back again, so if you do not have
+    # access to the secret , you will need to generate new api key/secret pair.
+    def __read_all_api_keys(self, sa_id_list: service_account.CCloudServiceAccountList):
+        self.__confluent_cli_login()
+        print("Gathering all API Keys.")
+        cmd_api_key_list = "confluent api-key list -o json "
+        output = loads(self.__execute_subcommand(cmd_api_key_list))
+        output = sorted(output, key=itemgetter("created"), reverse=True)
+        sa_list = [item.resource_id for item in sa_id_list.sa.values()]
+        for key in output:
+            if key["owner_resource_id"] in sa_list and key["resource_type"] == "kafka" and key["resource_id"]:
+                print("Found API Key with ID " + key["key"] + " for Service Account " + key["owner_resource_id"])
+                self.__add_to_cache(
+                    key["key"],
+                    "",
+                    key["description"],
+                    key["owner_resource_id"],
+                    key["resource_id"],
+                    key["created"],
+                )
 
+    def __add_to_cache(
+        self, api_key: str, api_secret: str, api_key_description: str, owner_id: str, cluster_id: str, created_at
+    ) -> CCloudAPIKey:
+        self.api_keys[api_key] = CCloudAPIKey(
+            api_key, api_secret, api_key_description, owner_id, cluster_id, created_at
+        )
+        return self.api_keys[api_key]
 
-def int_check_existing_api_key(cluster_id, sa_id, api_key_id=None):
-    temp_key = []
-    if SA_API_KEYS:
-        if api_key_id:
-            temp_key = [item for item in SA_API_KEYS if sa_id == item["owner_resource_id"]
-                        and cluster_id == item["resource_id"] and api_key_id == item["key"]]
+    def delete_keys_from_cache(self, sa_name) -> int:
+        count = 0
+        for item in self.api_keys.values():
+            if sa_name == item.owner_id:
+                self.api_keys.pop(item.api_key, None)
+                count += 1
+        return count
+
+    def __delete_key_from_cache(self, key_id: str) -> int:
+        self.api_keys.pop(key_id, None)
+
+    def find_keys_with_sa(self, sa_id: str) -> List[CCloudAPIKey]:
+        output = []
+        for item in self.api_keys.values():
+            if sa_id == item.owner_id:
+                output.append(item)
+        return output
+
+    def find_keys_with_sa_and_cluster(self, sa_id: str, cluster_id: str) -> List[CCloudAPIKey]:
+        output = []
+        for item in self.api_keys.values():
+            if cluster_id == item.cluster_id and sa_id == item.owner_id:
+                output.append(item)
+        return output
+
+    def create_api_key(self, env_id: str, cluster_id: str, sa_id: str, sa_name: str, description: str = None):
+        self.__confluent_cli_set_env(env_id)
+        self.__confluent_cli_set_cluster(cluster_id)
+        api_key_description = (
+            "API Key for " + sa_name + " created by CI/CD framework." if not description else description
+        )
+        cmd_create_api_key = (
+            "confluent api-key create -o json --service-account "
+            + sa_id
+            + " --resource "
+            + cluster_id
+            + ' --description "'
+            + api_key_description
+            + '"'
+            + self.__CMD_STDERR_TO_STDOUT
+        )
+        output = loads(self.__execute_subcommand(cmd_create_api_key))
+        self.__add_to_cache(
+            output["key"], output["secret"], api_key_description, sa_id, cluster_id, str(datetime.now())
+        )
+        return output
+
+    def delete_api_key(self, api_key: str) -> bool:
+        cmd_delete_api_key = "confluent api-key delete " + api_key
+        output = self.__execute_subcommand(cmd_delete_api_key)
+        if not output.startswith("Deleted API key "):
+            raise Exception("Could not delete the API Key.")
         else:
-            temp_key = sorted([item for item in SA_API_KEYS if sa_id == item["owner_resource_id"]
-                               and cluster_id == item["resource_id"]], key=itemgetter('created'), reverse=True)
-    return temp_key
-
-
-def int_print_api_key(sa_name, api_key):
-    print("Found " + str(len(api_key)) + " existing API key(s) with ID " +
-          ", ".join([item["key"] for item in api_key]) + " for Service Account " + sa_name)
-    pp.pprint(api_key)
-
-
-def int_create_api_key(cluster_id, sa_id, sa_name):
-    api_key_description = "API Key for " + sa_name + " created by CI/CD framework."
-    cmd_create_api_key = "confluent api-key create -o json --service-account " + sa_id + \
-        " --resource " + cluster_id + " --description \"" + \
-        api_key_description + "\"" + CMD_STDERR_TO_STDOUT
-    output = loads(int_execute_subcommand(cmd_create_api_key))
-    return output
+            self.__delete_key_from_cache(api_key)
+        return True
 
 
 def int_check_setup_api_key(sa_id, sa_name, cluster: dict, force_new_key: bool):
@@ -95,15 +169,13 @@ def int_check_setup_api_key(sa_id, sa_name, cluster: dict, force_new_key: bool):
     if api_key:
         int_print_api_key(sa_name, api_key)
     if force_new_key:
-        print(
-            "Override provided via --force-new-api-keys switch. Generating new API Keys.")
+        print("Override provided via --force-new-api-keys switch. Generating new API Keys.")
         api_key = None
     if not api_key:
         create_output = int_create_api_key(cluster_id, sa_id, sa_name)
         int_confluent_cli_get_api_key_list(sa_id)
         key_id = create_output["key"]
-        api_key = int_check_existing_api_key(
-            cluster_id, sa_id, key_id)
+        api_key = int_check_existing_api_key(cluster_id, sa_id, key_id)
         int_print_api_key(sa_name, api_key)
         OUTPUT_NEWLY_CREATED_KEYS[key_id] = api_key[0].copy()
         OUTPUT_NEWLY_CREATED_KEYS[key_id]["secret"] = create_output["secret"]
@@ -120,29 +192,38 @@ def int_check_setup_api_key(sa_id, sa_name, cluster: dict, force_new_key: bool):
             "env_name": env_name,
             "cluster_name": cluster_name,
             "sa_name": sa_name,
-            "api_key": item
+            "api_key": item,
         }
         OUTPUT_API_KEYS[key] = value
 
 
-def run_api_key_workflow(sa_name: str, create_sa_account_if_necessary: bool, enable_key_creation: bool, cluster_list: list,
-                         force_all_clusters: bool, force_new_api_keys: bool, generate_api_keys_output_file: bool):
+def run_api_key_workflow(
+    sa_name: str,
+    create_sa_account_if_necessary: bool,
+    enable_key_creation: bool,
+    cluster_list: list,
+    force_all_clusters: bool,
+    force_new_api_keys: bool,
+    generate_api_keys_output_file: bool,
+):
     if not (sa_name):
-        raise Exception(
-            'Provide the Name for which the Service Account needs to be created')
+        raise Exception("Provide the Name for which the Service Account needs to be created")
 
     if enable_key_creation and not cluster_list and not force_all_clusters:
         raise Exception(
-            "Trying to setup api keys but cluster ID's are not provided (--cluster-id) nor is the --force-all-clusters switch enabled.")
+            "Trying to setup api keys but cluster ID's are not provided (--cluster-id) nor is the --force-all-clusters switch enabled."
+        )
 
     print("=" * 40)
     clusters.run_cluster_workflow()
     print("=" * 40)
-    sa_value = service_account.run_sa_workflow(
-        sa_name, create_sa_account_if_necessary, False)
+    sa_value = service_account.run_sa_workflow(sa_name, create_sa_account_if_necessary, False)
     if not create_sa_account_if_necessary and sa_value is None:
-        raise Exception("Could not locate Service account with Name " + sa_name +
-                        " and service account creation was not enabled. Cannot create API Keys without Service Account details.")
+        raise Exception(
+            "Could not locate Service account with Name "
+            + sa_name
+            + " and service account creation was not enabled. Cannot create API Keys without Service Account details."
+        )
     print("=" * 40)
     int_confluent_cli_login()
     sa_id = sa_value["id"]
@@ -151,49 +232,86 @@ def run_api_key_workflow(sa_name: str, create_sa_account_if_necessary: bool, ena
         for item in cluster_list:
             cluster = clusters.CLUSTER_VALUES[item]
             if cluster is None:
-                raise Exception(
-                    "No Clusters found matching the provided Cluster ID: " + item + ".")
-            int_check_setup_api_key(
-                sa_id, sa_name, cluster, force_new_api_keys)
+                raise Exception("No Clusters found matching the provided Cluster ID: " + item + ".")
+            int_check_setup_api_key(sa_id, sa_name, cluster, force_new_api_keys)
     if force_all_clusters:
         for cluster in clusters.CLUSTER_VALUES.values():
-            int_check_setup_api_key(
-                sa_id, sa_name, cluster, force_new_api_keys)
+            int_check_setup_api_key(sa_id, sa_name, cluster, force_new_api_keys)
 
     if generate_api_keys_output_file:
-        with open('api_key_values.json', 'w', encoding="utf-8") as output_file:
+        with open("api_key_values.json", "w", encoding="utf-8") as output_file:
             output_file.write(dumps(OUTPUT_API_KEYS))
             print("The details of api keys are added to " + output_file.name)
 
     return OUTPUT_API_KEYS, OUTPUT_NEWLY_CREATED_KEYS
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(
-        description="Command line arguments for controlling the application", add_help=True, )
-    sa_args = parser.add_argument_group("sa-args", "Service Account Arguments")
-    sa_args.add_argument('--service-account-name', type=str, default=None,
-                         help="Provide the name for which Service Account needs to be created.",)
-    sa_args.add_argument('--force-new-account', action="store_true", default=False,
-                         help="Force Generate a new Service Account even if an account exists with the same Name",)
 
-    api_args = parser.add_argument_group(
-        "api-args", "API management arguments")
-    api_args.add_argument('--setup-api-keys-for-clusters', action="store_true", default=True,
-                          help="Generate new API Keys & Secrets while setting up the new Service Account",)
-    api_args.add_argument('--cluster-id', type=str, metavar="lkc-123456", default=[], action="append", dest="cluster_list",
-                          help='The Clusters list for which the api keys will be set up. ')
-    api_args.add_argument('--force-all-clusters', action="store_true", default=False,
-                          help="If the API keys are needed for all available clusters, then --cluster-id could be ignored and this switch could be enabled.",)
-    api_args.add_argument('--force-new-api-keys', action="store_true", default=False,
-                          help="This will generate new API Keys even if there are existing API keys linked to a cluster already.",)
-    api_args.add_argument('--generate-api-keys-output-file', action="store_true", default=False,
-                          help="This will generate new API Keys even if there are existing API keys linked to a cluster already.",)
+    parser = argparse.ArgumentParser(
+        description="Command line arguments for controlling the application",
+        add_help=True,
+    )
+    sa_args = parser.add_argument_group("sa-args", "Service Account Arguments")
+    sa_args.add_argument(
+        "--service-account-name",
+        type=str,
+        default=None,
+        help="Provide the name for which Service Account needs to be created.",
+    )
+    sa_args.add_argument(
+        "--force-new-account",
+        action="store_true",
+        default=False,
+        help="Force Generate a new Service Account even if an account exists with the same Name",
+    )
+
+    api_args = parser.add_argument_group("api-args", "API management arguments")
+    api_args.add_argument(
+        "--setup-api-keys-for-clusters",
+        action="store_true",
+        default=True,
+        help="Generate new API Keys & Secrets while setting up the new Service Account",
+    )
+    api_args.add_argument(
+        "--cluster-id",
+        type=str,
+        metavar="lkc-123456",
+        default=[],
+        action="append",
+        dest="cluster_list",
+        help="The Clusters list for which the api keys will be set up. ",
+    )
+    api_args.add_argument(
+        "--force-all-clusters",
+        action="store_true",
+        default=False,
+        help="If the API keys are needed for all available clusters, then --cluster-id could be ignored and this switch could be enabled.",
+    )
+    api_args.add_argument(
+        "--force-new-api-keys",
+        action="store_true",
+        default=False,
+        help="This will generate new API Keys even if there are existing API keys linked to a cluster already.",
+    )
+    api_args.add_argument(
+        "--generate-api-keys-output-file",
+        action="store_true",
+        default=False,
+        help="This will generate new API Keys even if there are existing API keys linked to a cluster already.",
+    )
 
     args = parser.parse_args()
 
     base_ccloud.initial_setup(args.setup_api_keys_for_clusters)
-    run_api_key_workflow(args.service_account_name, args.force_new_account, args.setup_api_keys_for_clusters, args.cluster_list,
-                         args.force_all_clusters, args.force_new_api_keys, args.generate_api_keys_output_file)
+    run_api_key_workflow(
+        args.service_account_name,
+        args.force_new_account,
+        args.setup_api_keys_for_clusters,
+        args.cluster_list,
+        args.force_all_clusters,
+        args.force_new_api_keys,
+        args.generate_api_keys_output_file,
+    )
     print("")
