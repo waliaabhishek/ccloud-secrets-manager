@@ -183,8 +183,9 @@ if __name__ == "__main__":
     printline()
     print("List of ignored accounts: ")
     for item in csm_configs.ccloud.ignore_service_account_list:
-        sa_details = ccloud_sa_list.sa[item]
-        print("SA ID: " + sa_details.resource_id + "\t\t SA Name: " + sa_details.name)
+        sa_details = ccloud_sa_list.sa.get(item, None)
+        if sa_details:
+            print("SA ID: " + sa_details.resource_id + "\t\t SA Name: " + sa_details.name)
     printline()
     ccloud_api_key_list = CCloudAPIKeyList(ccloud_sa_list)
     printline()
