@@ -179,17 +179,23 @@ class CSMConfigDataMap:
         ccloud_clusters: CCloudClusterList,
         csm_configs: data_parser.CSMConfig,
         secret_list: CSMSecretsList,
+        is_api_mgmt_disabled: bool,
     ):
         #  Analyze and set up tasks for Service Account management
         self.populate_service_account_tasks(csm_configs, definitions, ccloud_sa_details)
 
-        # Analyze and setup tasks for API Key management
-        create_secrets_req, update_secrets_req = self.populate_api_key_tasks(
-            definitions, ccloud_sa_details, ccloud_api_key_details, ccloud_clusters, secret_list
-        )
+        if not is_api_mgmt_disabled:
+            # Analyze and setup tasks for API Key management
+            create_secrets_req, update_secrets_req = self.populate_api_key_tasks(
+                definitions, ccloud_sa_details, ccloud_api_key_details, ccloud_clusters, secret_list
+            )
 
-        # Analyze and setup tasks for Secret Store
-        self.populate_secrets_tasks(create_secrets_req, update_secrets_req, ccloud_clusters)
+            # Analyze and setup tasks for Secret Store
+            self.populate_secrets_tasks(create_secrets_req, update_secrets_req, ccloud_clusters)
+        else:
+            print(
+                "As API Key creation flag is disabled, the API Key creation and Secret management functionality will not be triggered."
+            )
 
     def print_data_map(self, include_create: bool = True, include_delete: bool = True):
         print("=" * 80)

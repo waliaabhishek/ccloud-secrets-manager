@@ -147,6 +147,12 @@ if __name__ == "__main__":
         action="store_true",
         help="This switch can be used to invoke a dry run and list all the action that will be preformed, but not performing them.",
     )
+    conf_args.add_argument(
+        "--disable-api-key-creation",
+        default=False,
+        action="store_true",
+        help="This switch can be used to disable API Key & Secret creation (if required)",
+    )
 
     args = parser.parse_args()
 
@@ -196,7 +202,13 @@ if __name__ == "__main__":
         # Compare and generate the plan for execution
         csm_conf_store = CSMConfigDataMap()
         csm_conf_store.populate_data_map(
-            csm_definitions, ccloud_sa_list, ccloud_api_key_list, ccloud_cluster_list, csm_configs, secret_list
+            csm_definitions,
+            ccloud_sa_list,
+            ccloud_api_key_list,
+            ccloud_cluster_list,
+            csm_configs,
+            secret_list,
+            args.disable_api_key_creation,
         )
         printline()
         print("Execution Plan")
