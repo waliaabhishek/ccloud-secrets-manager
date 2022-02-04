@@ -156,6 +156,36 @@ class CCloudAPIKeyList:
             self.__delete_key_from_cache(api_key)
         return True
 
+    def print_api_keys(
+        self, ccloud_sa_list: service_account.CCloudServiceAccountList, key_list: List[CCloudAPIKey] = None
+    ):
+        print(
+            "{:<20} {:<25} {:<25} {:<20} {:<20} {:<50}".format(
+                "API Key",
+                "API Key Cluster ID",
+                "Created",
+                "API Key Owner ID",
+                "API Key Owner Name",
+                "API Key Description",
+            )
+        )
+        if key_list:
+            iter_data = key_list
+        else:
+            iter_data = [v for v in self.api_keys.values()]
+        for item in iter_data:
+            sa_details = ccloud_sa_list.sa[item.owner_id]
+            print(
+                "{:<20} {:<25} {:<25} {:<20} {:<20} {:<50}".format(
+                    item.api_key,
+                    item.cluster_id,
+                    item.created_at,
+                    item.owner_id,
+                    sa_details.name,
+                    item.api_key_description,
+                )
+            )
+
 
 def int_check_setup_api_key(sa_id, sa_name, cluster: dict, force_new_key: bool):
     cluster_id = cluster["id"]
