@@ -15,6 +15,18 @@ The long term aim of this integration is as follows:
 
 ## Quickstart
 
+Ensure that you have the following installed on system that this utility will be run on:
+* [Install AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
+* [AWS Token signed in or environment variables set up as this utility will not make an attempt for AWS login.](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html)
+*  [Install Confluent CLI](https://docs.confluent.io/confluent-cli/current/install.html)
+```
+https://github.com/waliaabhishek/ccloud-secrets-manager
+pip install requirements.txt
+python3 main_yaml_runner.py <<Additional Switches required as mentioned below>>
+```
+
+## Switches
+
 The execution starts with the base python file `main_yaml_runner.py`. This file has the following switches available: 
 
 * `--csm-config-file-path`: This is the configuration file path that will provide the connectivity and other config details. Sample file is available inside the configurations folder with the name `config.yaml`
