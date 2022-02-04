@@ -25,6 +25,8 @@ pip install requirements.txt
 python3 main_yaml_runner.py <<Additional Switches required as mentioned below>>
 ```
 
+There is a Dockerfile that could be used to generate an image which will not modify your system, but will create a new python image and install the necessary utilities in that image to run the project. 
+
 ## Switches
 
 The execution starts with the base python file `main_yaml_runner.py`. This file has the following switches available: 
