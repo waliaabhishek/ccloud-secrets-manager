@@ -6,6 +6,10 @@ configs:
     ccloud_user: "env::CONFLUENT_CLOUD_EMAIL"
     ccloud_password: "env::CONFLUENT_CLOUD_PASSWORD"
     # enable_sa_cleanup: true
+    detect_ignore_ccloud_internal_accounts: true
+    ignore_service_account_list:
+      - sa-xxxxx
+      - sa-yyyyy
   secret_store:
     enabled: true
     type: aws-secretsmanager
