@@ -23,9 +23,7 @@ SUPPORTED_STORES = SupportedSecretStores()
 
 
 class CSMCCloudConfig:
-    def __init__(
-        self, api_key, api_secret, ccloud_user, ccloud_pass, enable_sa_cleanup=False, perform_shallow_check=False
-    ) -> None:
+    def __init__(self, api_key, api_secret, ccloud_user, ccloud_pass, enable_sa_cleanup=False) -> None:
         self.__check_pair("api_key", api_key, "api_secret", api_secret)
         self.api_key = api_key
         self.api_secret = api_secret
@@ -33,7 +31,6 @@ class CSMCCloudConfig:
         self.ccloud_user = ccloud_user
         self.ccloud_password = ccloud_pass
         self.enable_sa_cleanup = enable_sa_cleanup
-        self.perform_shallow_check = perform_shallow_check
 
     def __check_pair(self, key1Name, key1Value, key2Name, key2Value):
         if (key1Value and not key2Value) or (not key1Value and key2Value) or (not key1Value and not key2Value):
@@ -70,12 +67,8 @@ class CSMConfig:
     def __init__(self) -> None:
         pass
 
-    def add_ccloud_configs(
-        self, api_key, api_secret, ccloud_user, ccloud_pass, enable_sa_cleanup=False, perform_shallow_check=False
-    ):
-        self.ccloud = CSMCCloudConfig(
-            api_key, api_secret, ccloud_user, ccloud_pass, enable_sa_cleanup, perform_shallow_check
-        )
+    def add_ccloud_configs(self, api_key, api_secret, ccloud_user, ccloud_pass, enable_sa_cleanup=False):
+        self.ccloud = CSMCCloudConfig(api_key, api_secret, ccloud_user, ccloud_pass, enable_sa_cleanup)
 
     def add_secret_store_configs(self, is_enabled: bool, type: str, configs: list):
         self.secretstore = CSMSecretStoreConfig(is_enabled, type, configs)
@@ -127,7 +120,6 @@ def load_parse_yamls(
         temp["ccloud_user"],
         temp["ccloud_password"],
         temp["enable_sa_cleanup"] if "enable_sa_cleanup" in temp else False,
-        temp["perform_shallow_check"] if "perform_shallow_check" in temp else True,
     )
     temp = csm_config["configs"]["secret_store"]
     csm.add_secret_store_configs(temp["enabled"], temp["type"], temp["configs"])
