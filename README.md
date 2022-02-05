@@ -1,10 +1,10 @@
 # Confluent Cloud Service Account and API Key Management Automation Package
 
-Service accounts(SA) and API Keys(Keys) are used to interact with Confluent Cloud Kafka Clusters. These Kafka clusters exist in logical Environments. The SA are created at a Organization level and the Keys are linked to an SA and Kafka Cluster. 
+Service accounts(SA) and API Keys(Keys) are used to interact with Confluent Cloud Kafka Clusters. These Kafka clusters exist in logical Environments. The SA are created at a Organization level and Keys are linked to an SA and Kafka Cluster. 
 
-Currently, there are CLI and API available to generate and work with SA & API Keys but no direct path with CI/CD flows integration. This project aims to solve that. The core definitions of all the Service Accounts and necessary API Key bindings will be maintained in a single definitions file. This definitions file is a YAML structured file that will be used to maintain all definitions in a single location.
+Currently, there are CLI and API tools available to generate and work with SA & API Keys but no direct path with CI/CD flows integration. This project aims to solve that. The core definitions of all the Service Accounts and necessary API Key bindings will be maintained in a single definitions file. This definitions file is a YAML structured file that will be used to maintain all definitions in a single location.
 
-The project will use that definitions file to set up the Service accounts as well as to generate the API Keys. After generating the API Key/Secret pair; it will also append the API Key/Secret combo to a Secret Management layer of your choice all while adding tags for quick management and search capability. 
+The project will use that definitions file to set up Service accounts as well as to generate API Keys. After generating API Key/Secret pair; it will also append the API Key/Secret combo to a Secret Management layer of your choice all while adding tags to the secret for quick management and search capability.
 
 The long term aim of this integration is as follows:
 - [X] Allow creation of Service Accounts using standardized YAML structure
@@ -29,16 +29,16 @@ There is a Dockerfile that could be used to generate an image which will not mod
 
 ## Switches
 
-The execution starts with the base python file `main_yaml_runner.py`. This file has the following switches available: 
+The execution starts with base python file `main_yaml_runner.py`. This file has the following switches available: 
 
-* `--csm-config-file-path`: This is the configuration file path that will provide the connectivity and other config details. Sample file is available inside the configurations folder with the name `config.yaml`
-* `--csm-definitions-file-path`: This is the definition file path that will provide the resource definitions for execution in CCloud. Sample file is available inside the configurations folder with the name `definitions.yaml`
-* `--csm-generate-definitions-file`: This switch can be used for the initial runs where the team does not have a definitions file and would like to auto generate one from the existing ccloud resource mappings. 
-* `--dry-run`: This switch can be used to invoke a dry run and list all the action that will be preformed, but not performing them.
+* `--csm-config-file-path`: This is the configuration file path that will provide connectivity and other config details. Sample file is available inside the configurations folder with name `config.yaml`
+* `--csm-definitions-file-path`: This is the definition file path that will provide resource definitions for execution in CCloud. Sample file is available inside the configurations folder with name `definitions.yaml`
+* `--csm-generate-definitions-file`: This switch can be used for initial runs where the team does not have a definitions file and would like to auto generate one from existing ccloud resource mappings. 
+* `--dry-run`: This switch can be used to invoke a dry run and list all actions that will be preformed, but not performing them.
 * `--disable-api-key-creation`: This switch can be used to disable API Key & Secret creation (if required)
 * `--print-delete-eligible-api-keys`: This switch can be used to print the API keys which are not synced to the Secret store and (potentially) not used.
 
-## Fie Descriptors
+## File Descriptors
 
 ### Configuration File
 
@@ -54,9 +54,9 @@ There are 2 main sections in the configurations file:
     * `ccloud_user: <string>`: The CCloud user are required till the time API Keys cannot be generated with its own API. The only way right now is to use the CCloud CLI and that needs an username/password combo for invocation.
     * `ccloud_password: <string>`: Password for the corresponding CCloud username.
     * `enable_sa_cleanup: <boolean>`: Service Account deletion is not enabled by default and could be enabled with this switch if desired.
-    * `detect_ignore_ccloud_internal_accounts: <boolean>`: This configuration tries to determine which service accounts were generated by the CCloud internal automations like fully managed KSQLDB cluster & Fully managed Connectors. This may or may not always be successful as the Service Account naming scheme may change anytime; yet I will try to keep it as optimal as possible.
-    * `ignore_service_account_list: <list<string>>`: These are some service accounts that the team may not want this utility to track.
-  * `secret_store`: Contains all the configurations related to the Secret manager.
+    * `detect_ignore_ccloud_internal_accounts: <boolean>`: This configuration determines which service accounts were generated by the CCloud internal automations like fully managed ksqlDB cluster & Fully managed Connectors. This may or may not always be successful as Service Account naming scheme may change at anytime within Confluent Cloud; yet I will try to keep it as optimal as possible.
+    * `ignore_service_account_list: <list<string>>`: These could be service account resource IDs that the team may not want this utility to track.
+  * `secret_store`: Contains all configurations related to the Secret manager.
     * `enabled: <boolean>`: Secret Stores will only be enabled if this switch is turned to true. 
     * `type: <string>`: Currently can only take one value string `aws-secretsmanager`. More options will hopefully be available as I get more time to work on the utility.
     * `prefix: <string>`: If you would like to have a constant string prefixed to every secret path, this is the setting to use. Defaults to `""`
