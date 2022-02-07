@@ -13,6 +13,7 @@ The long term aim of this integration is as follows:
 - [ ] Enable Permission management for the pluggable Secret Manger, so that it can become one stop shop for Confluent Cloud secret management - Not started yet.
 - [ ] Add API Key Rolling logic
 - [ ] Add REST Proxy Access logic.
+- [ ] Add Login and connectivity test logic for Secret Management framework.
 
 
 ## Quickstart
