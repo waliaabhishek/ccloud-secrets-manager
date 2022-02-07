@@ -11,6 +11,8 @@ The long term aim of this integration is as follows:
 - [X] Allow creation of API Keys for the corresponding SA automatically
 - [X] Allow storing the SA & API Key details into a pluggable Secrets manager for ease of management and greater flexibility - Done for AWS Secrets Manager with more to follow.
 - [ ] Enable Permission management for the pluggable Secret Manger, so that it can become one stop shop for Confluent Cloud secret management - Not started yet.
+- [ ] Add API Key Rolling logic
+- [ ] Add REST Proxy Access logic.
 
 
 ## Quickstart
