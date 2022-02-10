@@ -3,7 +3,6 @@ import argparse
 from json import dumps, loads
 from base64 import b64decode, b64encode
 import sys
-from turtle import update
 from typing import Dict, List
 import re
 
