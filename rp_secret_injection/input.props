@@ -1,0 +1,5 @@
+k8s_namespace: confluent
+basic_users_secret_name: secret-name
+basic_users_key: basic.txt
+jaas_users_secret_name: secret-name
+jaas_users_key: restProxyUsers.jaas

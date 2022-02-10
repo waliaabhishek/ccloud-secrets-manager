@@ -2,6 +2,8 @@ import subprocess
 import argparse
 from json import dumps, loads
 from base64 import b64decode, b64encode
+import sys
+from turtle import update
 from typing import Dict, List
 import re
 
@@ -79,87 +81,152 @@ def update_jaas_secret(
     return resp
 
 
+def check_presence(key_name: str, key_value: str):
+    if key_value:
+        return key_value
+    else:
+        raise Exception(f"Please ensure that '{key_name}' is provided in the config file")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Command line arguments for controlling the application",
         add_help=True,
     )
 
-    conf_args = parser.add_argument_group("conf-args", "Configuration Arguments for running the flow")
-    conf_args.add_argument(
-        "--dry-run",
-        default=False,
+    global_args = parser.add_mutually_exclusive_group()
+    conf_args = parser.add_argument_group("switch-args", "Switch based argument run")
+    file_args = parser.add_argument_group("file-args", "File based argument run")
+
+    global_args.add_argument(
+        "--enable-file-config-loader",
+        default=None,
         action="store_true",
-        help="This switch can be used to invoke a dry run and list all the action that will be preformed, but not performing them.",
+        help="This loader can be used to feed the data from property files instead of using inline switches.",
     )
-    conf_args.add_argument(
-        "--new-api-key",
-        type=str,
+    global_args.add_argument(
+        "--enable-switch-config-loader",
         default=None,
-        required=True,
-        metavar="ABCDEF123456789",
-        help="This is the configuration file path that will provide the connectivity and other config details.",
+        action="store_true",
+        help="This loader can be used to feed the data from switches instead of using file based property feeds.",
     )
-    conf_args.add_argument(
-        "--new-api-secret",
+    # global_args.add_argument(
+    #     "--dry-run",
+    #     default=False,
+    #     action="store_true",
+    #     help="This switch can be used to invoke a dry run and list all the action that will be preformed, but not performing them.",
+    # )
+
+    file_args.add_argument(
+        "--config-file-path",
         type=str,
-        required=True,
-        default=None,
-        metavar="sadfkjhaskfbkhgasfuiuwei32789wys",
-        help="This is the definition file path that will provide the resource definitions for execution in CCloud.",
+        default=argparse.SUPPRESS,
+        required="--enable-file-config-loader" in sys.argv,
+        metavar="<file path of the config props file",
+        help="This is the config file that contains the property values needed for executing the script via file loader.",
     )
+
     conf_args.add_argument(
         "--k8s-namespace",
         type=str,
-        default="confluent",
-        metavar="k8s-namespace",
+        default=argparse.SUPPRESS,
+        required="--enable-switch-config-loader" in sys.argv,
+        metavar="confluent-namespace-value",
         help="This is the definition file path that will provide the resource definitions for execution in CCloud.",
     )
     conf_args.add_argument(
         "--basic-users-secret-name",
         type=str,
-        default=None,
-        required=True,
+        default=argparse.SUPPRESS,
+        required="--enable-switch-config-loader" in sys.argv,
         metavar="k8s-secret-name",
         help="This is the definition file path that will provide the resource definitions for execution in CCloud.",
     )
     conf_args.add_argument(
         "--basic-users-key",
         type=str,
-        default="basic.txt",
-        metavar="key-name-inside-basic-user-secret",
+        default=argparse.SUPPRESS,
+        required="--enable-switch-config-loader" in sys.argv,
         help="This is the definition file path that will provide the resource definitions for execution in CCloud.",
     )
     conf_args.add_argument(
         "--jaas-users-secret-name",
         type=str,
-        default=None,
-        required=True,
+        default=argparse.SUPPRESS,
+        required="--enable-switch-config-loader" in sys.argv,
         metavar="k8s-secret-name",
         help="This is the definition file path that will provide the resource definitions for execution in CCloud.",
     )
     conf_args.add_argument(
         "--rp-users-jaas-key",
         type=str,
-        default="restProxyUsers.jaas",
+        default=argparse.SUPPRESS,
+        required="--enable-switch-config-loader" in sys.argv,
         metavar="key-name-inside-jaas-secret",
         help="This is the definition file path that will provide the resource definitions for execution in CCloud.",
     )
 
     args = parser.parse_args()
 
+    # Raise parser exception if neither of the mutually exclusive switches are provided.
+    if not args.enable_file_config_loader and not args.enable_switch_config_loader:
+        parser.error(
+            "No config loader type provided, add --enable-file-config-loader or --enable-switch-config-loader"
+        )
+
+    # Ensure all the properties are provided in the file being parsed.
+    if args.enable_file_config_loader:
+        with open(args.config_file_path, "r") as f:
+            config_string = "[section]\n" + f.read()
+        from configparser import ConfigParser
+
+        file_parser = ConfigParser()
+        file_parser.read_string(config_string)
+        k8s_ns = check_presence("k8s_namespace", file_parser.get("section", "k8s_namespace"))
+        k8s_secret_basic_users = check_presence(
+            "basic_users_secret_name", file_parser.get("section", "basic_users_secret_name")
+        )
+        k8s_secret_basic_users_key = check_presence("basic_users_key", file_parser.get("section", "basic_users_key"))
+        k8s_secret_jaas_users = check_presence(
+            "jaas_users_secret_name", file_parser.get("section", "jaas_users_secret_name")
+        )
+        k8s_secret_jaas_users_key = check_presence("jaas_users_key", file_parser.get("section", "jaas_users_key"))
+
+    if args.enable_switch_config_loader:
+        k8s_ns = args.k8s_namespace
+        k8s_secret_basic_users = args.basic_users_secret_name
+        k8s_secret_basic_users_key = args.basic_users_key
+        k8s_secret_jaas_users = args.jaas_users_secret_name
+        k8s_secret_jaas_users_key = args.rp_users_jaas_key
+
+    # Input read for API Key & Secret
+    input_api_key = input("Please provide the New API Key:")
+    input_api_secret = input("Please provide the New API Secret:")
+    if not input_api_key or not input_api_secret:
+        raise Exception(
+            "The API Key or Secret value was left empty, please ensure that you provide the right value for processing."
+        )
+    else:
+        new_api_key = input_api_key
+        new_api_secret = input_api_secret
+
+    # Confirm the Input value
+    break_loop = False
+    while not break_loop:
+        answer = input("Is the API Key and Secret provided correct?(Y or N)").upper()
+        if answer in ["YES", "Y"]:
+            break_loop = True
+        elif answer in ["NO", "N"]:
+            print("Bye!")
+            exit(1)
+        else:
+            print("Please use Y or N as the response. Try again.")
+
     printline()
-    is_dry_run = args.dry_run
-    new_api_key = args.new_api_key
-    new_api_secret = args.new_api_secret
-    k8s_ns = args.k8s_namespace
-    k8s_secret_basic_users = args.basic_users_secret_name
-    k8s_secret_basic_users_key = args.basic_users_key
-    k8s_secret_jaas_users = args.jaas_users_secret_name
-    k8s_secret_jaas_users_key = args.rp_users_jaas_key
+    # is_dry_run = args.dry_run
 
     print("Current Values that the script will be working with: ")
-    print(f"Is Dry Run:\t\t\t\t\t\t\t{is_dry_run}")
+    # print(f"Is Dry Run:\t\t\t\t\t\t\t{is_dry_run}")
     print(f"New API Key:\t\t\t\t\t\t\t{new_api_key}")
     print(f"Target Kubernetes Namespace:\t\t\t\t\t{k8s_ns}")
     print(f"Target Basic Auth Kubernetes Secret Name:\t\t\t{k8s_secret_basic_users}")
@@ -173,43 +240,62 @@ if __name__ == "__main__":
     # Check Basic Users and add if necessary
     basic_users = get_basic_secret(k8s_ns, k8s_secret_basic_users, k8s_secret_basic_users_key)
     # print(resp)
-    found = False
-    for item in basic_users:
+    no_update_required, found_update_required, update_resp = False, False, ""
+    for i, item in enumerate(basic_users):
         secret, _, _ = item.partition(",krp-users")
         key, _, value = secret.partition(":")
         key, value = key.strip(), value.strip()
         if new_api_key == key and new_api_secret == value:
-            found = True
+            no_update_required = True
             break
+        if new_api_key == key and new_api_secret != value:
+            basic_users[i] = f"{new_api_key}: {new_api_secret},krp-users"
+            found_update_required = True
         del secret, key, value
-    if found:
+    if no_update_required:
         print(f"Found the API Key in {k8s_secret_basic_users_key} key in {k8s_secret_basic_users} secret")
         print("Not updating anything")
+    elif found_update_required:
+        print("API Key located but the secret value was different. Updating secret value now.")
+        update_resp = update_basic_secret(k8s_ns, k8s_secret_basic_users, k8s_secret_basic_users_key, basic_users)
+        print(update_resp)
+        was_patching_performed = True
     else:
         print(f"API Key not found in the secret. Updating the secret now.")
         basic_users.append(f"{new_api_key}: {new_api_secret},krp-users")
         update_resp = update_basic_secret(k8s_ns, k8s_secret_basic_users, k8s_secret_basic_users_key, basic_users)
-        print("Done")
+        print(update_resp)
         was_patching_performed = True
+    del no_update_required, found_update_required, update_resp
 
     printline()
     # Check JAAS Users and add if necessary
     prepend, postpend, jaas_users = get_jaas_secret(k8s_ns, k8s_secret_jaas_users, k8s_secret_jaas_users_key)
-    found = False
-    for item in jaas_users:
+    no_update_required, found_update_required, update_resp = False, False, ""
+    for i, item in enumerate(jaas_users):
         if item["username"] == new_api_key and item["password"] == new_api_secret:
-            found = True
+            no_update_required = True
             break
-    if found:
+        if item["username"] == new_api_key and item["password"] != new_api_secret:
+            jaas_users[i] = {"username": new_api_key, "password": new_api_secret}
+            found_update_required = True
+    if no_update_required:
         print(f"Found the API Key in {k8s_secret_jaas_users_key} key in {k8s_secret_jaas_users} secret")
         print("Not updating anything")
+    elif found_update_required:
+        print("API Key located but the secret value was different. Updating secret value now.")
+        update_resp = update_jaas_secret(
+            k8s_ns, k8s_secret_jaas_users, k8s_secret_jaas_users_key, jaas_users, prepend, postpend
+        )
+        print(update_resp)
+        was_patching_performed = True
     else:
         print(f"API Key not found in the secret. Updating the secret now.")
         jaas_users.append({"username": new_api_key, "password": new_api_secret})
         update_resp = update_jaas_secret(
             k8s_ns, k8s_secret_jaas_users, k8s_secret_jaas_users_key, jaas_users, prepend, postpend
         )
-        print("Done")
+        print(update_resp)
         was_patching_performed = True
 
     printline()
