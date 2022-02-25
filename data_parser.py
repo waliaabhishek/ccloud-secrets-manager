@@ -31,6 +31,7 @@ class CSMCCloudConfig:
         ccloud_pass,
         ignore_service_account_list: List[str],
         detect_ignore_ccloud_internal_accounts,
+        rest_proxy_secret_name,
         enable_sa_cleanup=False,
     ) -> None:
         self.__check_pair("api_key", api_key, "api_secret", api_secret)
@@ -39,6 +40,7 @@ class CSMCCloudConfig:
         self.__check_pair("ccloud_user", ccloud_user, "ccloud_password", ccloud_pass)
         self.ccloud_user = ccloud_user
         self.ccloud_password = ccloud_pass
+        self.rest_proxy_secret_name = rest_proxy_secret_name
         self.enable_sa_cleanup = enable_sa_cleanup
         self.detect_ignore_ccloud_internal_accounts = detect_ignore_ccloud_internal_accounts
         self.ignore_service_account_list: List[str] = ignore_service_account_list
@@ -88,6 +90,7 @@ class CSMConfig:
         ccloud_pass,
         ignore_service_account_list,
         detect_ignore_ccloud_internal_accounts,
+        rest_proxy_secret_name,
         enable_sa_cleanup=False,
     ):
         self.ccloud = CSMCCloudConfig(
@@ -97,6 +100,7 @@ class CSMConfig:
             ccloud_pass,
             ignore_service_account_list,
             detect_ignore_ccloud_internal_accounts,
+            rest_proxy_secret_name,
             enable_sa_cleanup,
         )
 
@@ -107,12 +111,15 @@ class CSMConfig:
 
 
 class CSMServiceAccount:
-    def __init__(self, name: str, desc: str, rp_access: bool, email_adddress: str, clusters: list) -> None:
+    def __init__(
+        self, name: str, desc: str, rp_access: bool, email_adddress: str, clusters: list, is_rp_user: bool
+    ) -> None:
         self.name = name
         self.description = desc
         self.rp_access = rp_access
         self.email_address = email_adddress
         self.cluster_list = clusters
+        self.is_rp_user = is_rp_user
 
 
 class CSMDefinitions:
@@ -124,8 +131,10 @@ class CSMDefinitions:
     def __str__(self) -> str:
         pp.pprint(self.sa)
 
-    def add_service_account(self, name: str, desc: str, rp_access: bool, email_adddress: str, clusters: list):
-        temp = CSMServiceAccount(name, desc, rp_access, email_adddress, clusters)
+    def add_service_account(
+        self, name: str, desc: str, rp_access: bool, email_adddress: str, clusters: list, is_rp_user: bool
+    ):
+        temp = CSMServiceAccount(name, desc, rp_access, email_adddress, clusters, is_rp_user)
         self.sa.append(temp)
 
     def find_service_account(self, sa_name: str):
@@ -152,6 +161,7 @@ def load_parse_yamls(
         temp["ccloud_password"],
         temp["ignore_service_account_list"] if "ignore_service_account_list" in temp else None,
         temp["detect_ignore_ccloud_internal_accounts"] if "detect_ignore_ccloud_internal_accounts" in temp else False,
+        temp.get("rest_proxy_secret_name", None),
         temp["enable_sa_cleanup"] if "enable_sa_cleanup" in temp else False,
     )
 
@@ -167,12 +177,19 @@ def load_parse_yamls(
         helpers.env_parse_replace(csm_definition)
         definitions = CSMDefinitions()
         for item in csm_definition["service_accounts"]:
+            rp_user = item.get("is_rest_proxy_user", False)
+            rp_access = item.get("enable_rest_proxy_access", False)
+            if (rp_access or rp_user) and not csm.ccloud.rest_proxy_secret_name:
+                raise Exception(
+                    "rest_proxy_secret_name is required in secret configuration if enable_rest_proxy_access or is_rest_proxy_user is turned on in definitions."
+                )
             definitions.add_service_account(
                 item["name"],
                 item["description"],
-                item["enable_rest_proxy_access"],
-                item["team_email_address"],
+                rp_access if not rp_user else True,
+                item.get("team_email_address", None),
                 item["api_key_access"],
+                rp_user,
             )
         return csm, definitions
     else:

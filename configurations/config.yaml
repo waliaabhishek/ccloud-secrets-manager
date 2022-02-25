@@ -15,6 +15,7 @@ configs:
     type: aws-secretsmanager
     prefix: ""
     separator: "/"
+    rest_proxy_secret_name: "rest_proxy_kafka_users"
     configs:
       - testing: "api_service"
       - secret_token: "api_pat_token"

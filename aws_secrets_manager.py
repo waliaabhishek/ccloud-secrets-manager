@@ -27,6 +27,7 @@ class AWSSecret(CSMSecret):
             secret_tags["sa_name"],
             secret_tags["cluster_id"],
             secret_tags["api_key"],
+            True if secret_tags["rest_proxy_access"].upper() == "TRUE" else False,
         )
 
 
@@ -53,7 +54,7 @@ class AWSSecretsList(CSMSecretsList):
         output = hashlib.md5(dumps(json_object_data, sort_keys=True).encode("utf-8")).hexdigest()
         return output
 
-    def read_all_secrets(self, filter: Dict[str, List[str]]):
+    def read_all_secrets(self, filter: Dict[str, List[str]], **kwargs):
         out_filter = self.__create_filter_tags(filter)
         resp = client.list_secrets(Filters=out_filter)
         if resp["ResponseMetadata"]["HTTPStatusCode"] != 200:
@@ -68,7 +69,9 @@ class AWSSecretsList(CSMSecretsList):
         self.secret[secret_name] = AWSSecret(secret_name, secret_value, secret_tags)
         return self.secret[secret_name]
 
-    def find_secret(self, sa_name: str, sa_list: CCloudServiceAccountList, cluster_id: str = None) -> List[AWSSecret]:
+    def find_secret(
+        self, sa_name: str, sa_list: CCloudServiceAccountList, cluster_id: str = None, **kwargs
+    ) -> List[AWSSecret]:
         temp_sa = sa_list.find_sa(sa_name)
         if cluster_id:
             return [v for v in self.secret.values() if v.sa_id == temp_sa.resource_id and v.cluster_id == cluster_id]
@@ -102,7 +105,7 @@ class AWSSecretsList(CSMSecretsList):
         cluster = cluster_list.find_cluster(api_key.cluster_id)
         env = env_list.find_environment(cluster.env_id)
 
-        secret_name = self.create_secret_name_string(
+        secret_name = self.__create_secret_name_string(
             csm_config.secretstore.configs.get("secret_name_prefix", ""),
             csm_config.secretstore.configs.get("secret_name_separator", "/"),
             env.env_id,
@@ -118,7 +121,7 @@ class AWSSecretsList(CSMSecretsList):
             "cluster_id": api_key.cluster_id,
             "sa_name": sa_list.sa[api_key.owner_id].name,
             "sa_id": api_key.owner_id,
-            "allowed_in_rest_proxy": def_details.rp_access,
+            "rest_proxy_access": def_details.rp_access,
         }
         secret_data = self.get_secret(secret_name)
         secret_value = {"username": api_key.api_key, "password": api_key.api_secret}
@@ -126,8 +129,10 @@ class AWSSecretsList(CSMSecretsList):
             self.__update_secret(
                 secret_name, secret_data["SecretString"], secret_value, self.__render_secret_tags_format(secret_tags)
             )
+            self.add_to_cache(secret_name, secret_value, secret_tags)
         else:
             self.__create_secret(secret_name, secret_value, self.__render_secret_tags_format(secret_tags))
+            self.add_to_cache(secret_name, secret_value, secret_tags)
 
     def __create_secret(self, secret_name: str, secret_values: dict, secret_tags: list):
         print("Trying to create a secret with the following details:")
@@ -169,6 +174,28 @@ class AWSSecretsList(CSMSecretsList):
         else:
             print("Tags Added successfully.")
         return
+
+    def create_update_rest_proxy_secret(
+        self,
+        csm_definitions: CSMDefinitions,
+        csm_configs: CSMConfig,
+        ccloud_api_key_list: CCloudAPIKeyList,
+        ccloud_cluster_list: CCloudClusterList,
+        ccloud_sa_list: CCloudServiceAccountList,
+        **kwargs
+    ):
+        new_api_keys = self.__get_new_rest_proxy_api_keys(csm_definitions, ccloud_api_key_list)
+
+        cluster_list = set([v.cluster_id for v in new_api_keys])
+        for item in cluster_list:
+            cluster_details = ccloud_cluster_list.find_cluster(item)
+            rp_sa_details = ccloud_sa_list
+            rp_secret_name = self.__create_secret_name_string(
+                csm_configs.secretstore.prefix,
+                csm_configs.secretstore.separator,
+                cluster_details.env_id,
+                cluster_details.cluster_id,
+            )
 
 
 def add_secrets_to_rest_proxy_user(
