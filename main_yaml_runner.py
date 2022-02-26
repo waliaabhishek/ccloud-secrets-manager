@@ -120,7 +120,7 @@ if __name__ == "__main__":
     )
 
     conf_args = parser.add_argument_group(
-        "configuration-args", "Configuration Arguments for running in CICD flow invocation"
+        "configuration-args", "Configuration Arguments for running in CI/CD flow invocation"
     )
     conf_args.add_argument(
         "--csm-config-file-path",
