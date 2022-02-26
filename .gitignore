@@ -3,4 +3,5 @@ __pycache__
 .vscode
 venv
 *.json
-configurations/test_output.yaml
+# Added to ignore test configurations for playing around with the tool
+configurations/test*.*
