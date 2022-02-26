@@ -28,16 +28,22 @@ class CCloudAPIKeyList:
     api_keys: Dict[str, CCloudAPIKey]
     __CMD_STDERR_TO_STDOUT = " 2>&1 "
 
+    # This init function will initiate the base object and then check CCloud
+    # for all the active API Keys. All API Keys that are listed in CCloud are
+    # the added to a cache.
     def __init__(self, sa_id_list: service_account.CCloudServiceAccountList) -> None:
         self.api_keys = {}
         print("Gathering list of all API Key(s) for all Service Account(s) in CCloud.")
         self.__read_all_api_keys(sa_id_list)
 
+    # This is the base function that will call the command line tool. The command to be
+    # executed is passed in as the command parameter.
     def __execute_subcommand(self, command):
         process = subprocess.Popen(command, stdout=subprocess.PIPE, shell=True)
         out = process.communicate()[0].strip()
         return out.decode("UTF-8")
 
+    # This function can be used to login into the CCloud CLI.
     def __confluent_cli_login(self):
         cmd_login = "confluent login" + self.__CMD_STDERR_TO_STDOUT
         output = self.__execute_subcommand(cmd_login)
@@ -46,6 +52,8 @@ class CCloudAPIKeyList:
                 "Could not login into Confluent Cloud CLI. Please ensure that the credentials are correct." + output
             )
 
+    # This function should be called after CCloud Login is done and
+    # will set the environment passed in as the env_id
     def __confluent_cli_set_env(self, env_id):
         cmd_set_env = "confluent environment use " + env_id
         output = self.__execute_subcommand(cmd_set_env)
