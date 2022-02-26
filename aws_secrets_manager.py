@@ -93,6 +93,20 @@ class AWSSecretsList(CSMSecretsList):
             )
         return resp
 
+    def __render_secret_tags(
+        self, env_name, env_id, cluster_name, cluster_id, sa_name, sa_id, rest_proxy_access, **kwargs
+    ):
+        return {
+            "secret_manager": "confluent_cloud",
+            "env_name": env_name,
+            "env_id": env_id,
+            "cluster_name": cluster_name,
+            "cluster_id": cluster_id,
+            "sa_name": sa_name,
+            "sa_id": sa_id,
+            "rest_proxy_access": rest_proxy_access,
+        }
+
     def create_or_update_secret(
         self,
         api_key: CCloudAPIKey,
@@ -101,6 +115,7 @@ class AWSSecretsList(CSMSecretsList):
         sa_list: CCloudServiceAccountList,
         csm_definitions: CSMDefinitions,
         csm_config: CSMConfig,
+        secret_name_postfix: str = None,
     ) -> AWSSecret:
         cluster = cluster_list.find_cluster(api_key.cluster_id)
         env = env_list.find_environment(cluster.env_id)
@@ -111,18 +126,18 @@ class AWSSecretsList(CSMSecretsList):
             env.env_id,
             cluster.cluster_id,
             api_key.owner_id,
+            secret_name_postfix,
         )
         def_details = csm_definitions.find_service_account(sa_list.sa[api_key.owner_id].name)
-        secret_tags = {
-            "secret_manager": "confluent_cloud",
-            "env_name": env.display_name,
-            "env_id": env.env_id,
-            "cluster_name": cluster.cluster_name,
-            "cluster_id": api_key.cluster_id,
-            "sa_name": sa_list.sa[api_key.owner_id].name,
-            "sa_id": api_key.owner_id,
-            "rest_proxy_access": def_details.rp_access,
-        }
+        secret_tags = self.__render_secret_tags(
+            env.display_name,
+            env.env_id,
+            cluster.cluster_name,
+            api_key.cluster_id,
+            sa_list.sa[api_key.owner_id].name,
+            api_key.owner_id,
+            def_details.rp_access,
+        )
         secret_data = self.get_secret(secret_name)
         secret_value = {"username": api_key.api_key, "password": api_key.api_secret}
         if secret_data:
@@ -189,13 +204,37 @@ class AWSSecretsList(CSMSecretsList):
         cluster_list = set([v.cluster_id for v in new_api_keys])
         for item in cluster_list:
             cluster_details = ccloud_cluster_list.find_cluster(item)
-            rp_sa_details = ccloud_sa_list
             rp_secret_name = self.__create_secret_name_string(
                 csm_configs.secretstore.prefix,
                 csm_configs.secretstore.separator,
                 cluster_details.env_id,
                 cluster_details.cluster_id,
+                # TODO: The Owner ID is not correct. This owner ID should come from the REST Proxy user SA; and not the API Key SA.
+                api_key.owner_id,
+                "rp-users",
             )
+            rp_secret = self.get_secret(rp_secret_name)
+            if rp_secret:
+                rp_secret_data = loads(rp_secret["SecretString"])
+            else:
+                rp_secret_data = ""
+            update_triggered = False
+            for api_key in [v for v in new_api_keys if v.cluster_id == item]:
+                # Rest proxy Front End String Update
+                is_updated, rp_secret_data["basic.txt"] = self.__add_front_end_user_to_rp_secret_string(
+                    rp_secret_name, rp_secret_data["basic.txt"], api_key.api_key, api_key.api_secret
+                )
+                if is_updated:
+                    update_triggered = True
+                is_updated, rp_secret_data["restProxyUsers.jaas"] = self.__add_kafka_user_to_rp_secret_string(
+                    rp_secret_name, rp_secret_data["restProxyUsers.jaas"], api_key.api_key, api_key.api_secret
+                )
+                if is_updated:
+                    update_triggered = True
+            if update_triggered:
+                # TODO: The secret data is updated and now needs to be persisted into AWS Secrets Manager.
+                secret_tags = self.__render_secret_tags()
+                pass
 
 
 def add_secrets_to_rest_proxy_user(
