@@ -9,7 +9,7 @@ from botocore.exceptions import ClientError
 import base_ccloud
 from api_key_manager import CCloudAPIKey, CCloudAPIKeyList
 from clusters import CCloudClusterList, CCloudEnvironmentList
-from data_parser import CSMConfig, CSMDefinitions
+from yaml_parser import CSMConfig, CSMDefinitions
 from secrets_manager_interface import CSMSecret, CSMSecretsList
 from service_account import CCloudServiceAccountList
 

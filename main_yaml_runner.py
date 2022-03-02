@@ -3,7 +3,7 @@ import argparse
 
 import yaml
 
-import data_parser
+import yaml_parser
 from api_key_manager import CCloudAPIKeyList
 from base_ccloud import CCloudConnection
 from clusters import CCloudClusterList, CCloudEnvironmentList
@@ -165,7 +165,7 @@ if __name__ == "__main__":
 
     printline()
     # parse the YAML files for the input configurations
-    csm_configs, csm_definitions = data_parser.load_parse_yamls(
+    csm_configs, csm_definitions = yaml_parser.load_parse_yamls(
         args.csm_config_file_path, args.csm_definitions_file_path, args.csm_generate_definitions_file
     )
     printline()
@@ -195,7 +195,7 @@ if __name__ == "__main__":
     # This path will only get executed if the YAML files is passed in and
     # Generate YAML file is unchecked.
     else:
-        if csm_configs.secretstore.type == data_parser.SUPPORTED_STORES.AWS_SECRETS:
+        if csm_configs.secretstore.type == yaml_parser.SUPPORTED_STORES.AWS_SECRETS:
             import aws_secrets_manager
 
             secret_list = aws_secrets_manager.AWSSecretsList()

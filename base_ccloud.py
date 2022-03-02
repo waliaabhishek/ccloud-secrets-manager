@@ -1,6 +1,6 @@
 from requests.auth import HTTPBasicAuth
 
-from data_parser import CSMConfig
+from yaml_parser import CSMConfig
 from helpers import mandatory_check
 
 

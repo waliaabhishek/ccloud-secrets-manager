@@ -4,7 +4,7 @@ from tokenize import String
 from typing import Dict, List, Tuple
 
 from api_key_manager import CCloudAPIKey, CCloudAPIKeyList
-from data_parser import CSMDefinitions
+from yaml_parser import CSMDefinitions
 from service_account import CCloudServiceAccount, CCloudServiceAccountList
 
 

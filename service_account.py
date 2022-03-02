@@ -1,4 +1,4 @@
-from data_parser import CSMConfig
+from yaml_parser import CSMConfig
 from typing import Dict, List, Tuple
 from urllib import parse
 

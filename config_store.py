@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import OrderedDict, Set, Tuple
 
-import data_parser
+import yaml_parser
 from api_key_manager import CCloudAPIKeyList
 from clusters import CCloudClusterList
 from secrets_manager_interface import CSMSecretsList
@@ -66,8 +66,8 @@ class CSMConfigDataMap:
 
     def populate_service_account_tasks(
         self,
-        csm_configs: data_parser.CSMConfig,
-        csm_definitions: data_parser.CSMDefinitions,
+        csm_configs: yaml_parser.CSMConfig,
+        csm_definitions: yaml_parser.CSMDefinitions,
         ccloud_sa_details: CCloudServiceAccountList,
     ):
         sa_in_def = set([v.name for v in csm_definitions.sa])
@@ -97,7 +97,7 @@ class CSMConfigDataMap:
 
     def populate_api_key_tasks(
         self,
-        csm_definitions: data_parser.CSMDefinitions,
+        csm_definitions: yaml_parser.CSMDefinitions,
         ccloud_sa_details: CCloudServiceAccountList,
         ccloud_api_key_details: CCloudAPIKeyList,
         ccloud_clusters: CCloudClusterList,
@@ -173,11 +173,11 @@ class CSMConfigDataMap:
 
     def populate_data_map(
         self,
-        definitions: data_parser.CSMDefinitions,
+        definitions: yaml_parser.CSMDefinitions,
         ccloud_sa_details: CCloudServiceAccountList,
         ccloud_api_key_details: CCloudAPIKeyList,
         ccloud_clusters: CCloudClusterList,
-        csm_configs: data_parser.CSMConfig,
+        csm_configs: yaml_parser.CSMConfig,
         secret_list: CSMSecretsList,
         is_api_mgmt_disabled: bool,
     ):
