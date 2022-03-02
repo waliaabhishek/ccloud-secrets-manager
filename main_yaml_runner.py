@@ -101,6 +101,7 @@ def secrets_workflow_manager(k: int, v: CSMConfigTask):
 
 
 def run_workflow():
+    secrets_delta = False
     # Iterate on all the tasks created by the plan
     for k, v in csm_conf_store.select_new_tasks():
         # If the tasks are related to Service Accounts
@@ -111,6 +112,11 @@ def run_workflow():
             api_key_manager_workflow(k, v)
         elif v.object_type == CSMConfigObjectType.secret_store_type:
             secrets_workflow_manager(k, v)
+            secrets_delta = True
+    if secrets_delta:
+        secret_list.create_update_rest_proxy_secrets(
+            csm_definitions, csm_configs, ccloud_api_key_list, ccloud_cluster_list, ccloud_sa_list
+        )
 
 
 if __name__ == "__main__":

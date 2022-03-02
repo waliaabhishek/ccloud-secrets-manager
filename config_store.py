@@ -161,17 +161,24 @@ class CSMConfigDataMap:
         create_secrets_req: Set[str],
         update_secrets_req: Set[str],
         ccloud_clusters: CCloudClusterList,
+        csm_definitions: yaml_parser.CSMDefinitions,
     ):
         for item in create_secrets_req:
             value = item.split("~", 1)
             sa_name, cluster_id = value[0], value[1]
             cluster_details = ccloud_clusters.find_cluster(cluster_id)
-            # secret_details = secret_list.find_secret(sa_name, ccloud_sa_details, cluster_id)
+            sa_definition = csm_definitions.find_service_account(sa_name)
             self.add_new_task(
                 CSMConfigTaskType.create_task,
                 CSMConfigObjectType.secret_store_type,
                 CSMConfigTaskStatus.sts_not_started,
-                {"sa_name": sa_name, "cluster_id": cluster_id, "env_id": cluster_details.env_id},
+                {
+                    "sa_name": sa_name,
+                    "cluster_id": cluster_id,
+                    "env_id": cluster_details.env_id,
+                    "need_rp_access": sa_definition.rp_access,
+                    "is_rp_user": sa_definition.is_rp_user,
+                },
             )
         for item in update_secrets_req:
             value = item.split("~", 1)
@@ -181,7 +188,13 @@ class CSMConfigDataMap:
                 CSMConfigTaskType.update_task,
                 CSMConfigObjectType.secret_store_type,
                 CSMConfigTaskStatus.sts_not_started,
-                {"sa_name": sa_name, "cluster_id": cluster_id, "env_id": cluster_details.env_id},
+                {
+                    "sa_name": sa_name,
+                    "cluster_id": cluster_id,
+                    "env_id": cluster_details.env_id,
+                    "need_rp_access": sa_definition.rp_access,
+                    "is_rp_user": sa_definition.is_rp_user,
+                },
             )
 
     # This function is used to populate the tasks that will be executed during this run.
@@ -205,7 +218,7 @@ class CSMConfigDataMap:
             )
 
             # Analyze and setup tasks for Secret Store
-            self.populate_secrets_tasks(create_secrets_req, update_secrets_req, ccloud_clusters)
+            self.populate_secrets_tasks(create_secrets_req, update_secrets_req, ccloud_clusters, definitions)
         else:
             print(
                 "As API Key creation flag is disabled, the API Key creation and Secret management functionality will not be triggered."
