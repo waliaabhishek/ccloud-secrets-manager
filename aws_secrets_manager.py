@@ -197,21 +197,33 @@ class AWSSecretsList(CSMSecretsList):
         ccloud_api_key_list: CCloudAPIKeyList,
         ccloud_cluster_list: CCloudClusterList,
         ccloud_sa_list: CCloudServiceAccountList,
-        **kwargs
+        **kwargs,
     ):
         new_api_keys = self.__get_new_rest_proxy_api_keys(csm_definitions, ccloud_api_key_list)
+        rest_proxy_users_list = self.__get_rest_proxy_users(csm_definitions, ccloud_api_key_list)
+
+        if not rest_proxy_users_list:
+            raise Exception(
+                "No REST Proxy users were found but the config is required to configure REST Proxy secret. Cannot proceed."
+            )
 
         cluster_list = set([v.cluster_id for v in new_api_keys])
         for item in cluster_list:
             cluster_details = ccloud_cluster_list.find_cluster(item)
+            rest_proxy_user = ""
+            for rp_iter in rest_proxy_users_list:
+                if rp_iter.cluster_id == item:
+                    rest_proxy_user = rp_iter
+                    break
+            if not rest_proxy_user:
+                raise Exception(f"Could not find the REST Proxy Service Account to set up secret in {item} cluster. ")
             rp_secret_name = self.__create_secret_name_string(
                 csm_configs.secretstore.prefix,
                 csm_configs.secretstore.separator,
                 cluster_details.env_id,
                 cluster_details.cluster_id,
-                # TODO: The Owner ID is not correct. This owner ID should come from the REST Proxy user SA; and not the API Key SA.
-                api_key.owner_id,
-                "rp-users",
+                rest_proxy_user.owner_id,
+                csm_configs.ccloud.rest_proxy_secret_name,
             )
             rp_secret = self.get_secret(rp_secret_name)
             if rp_secret:

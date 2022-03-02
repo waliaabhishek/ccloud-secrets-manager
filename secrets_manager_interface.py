@@ -91,12 +91,12 @@ class CSMSecretsList(ABC):
         return api_key_details
 
     # This method locates the actual REST proxy Service Accounts, they are necessary
-    def __get_rest_proxy_user(
+    def __get_rest_proxy_users(
         self,
         csm_definitions: CSMDefinitions,
         ccloud_api_key_list: CCloudAPIKeyList,
     ) -> List[CCloudAPIKey]:
-        sa_names = [v for v in csm_definitions.sa if v.rp_access]
+        sa_names = [v for v in csm_definitions.sa if v.is_rp_user]
         api_key_details = [v for v in ccloud_api_key_list.api_keys.values() if v.owner_id in sa_names and v.api_secret]
         return api_key_details
 
