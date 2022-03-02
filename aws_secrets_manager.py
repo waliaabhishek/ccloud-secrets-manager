@@ -190,16 +190,23 @@ class AWSSecretsList(CSMSecretsList):
             print("Tags Added successfully.")
         return
 
-    def create_update_rest_proxy_secret(
+    # The function could be used to update the REST Proxy Users secret for adding all the api-keys to AWS Secret.
+    # It could also take a single api_key or multiple API_keys in a list as input for forcing only those API Keys to the AWS Secret.
+    # Passing a single API KEY per call is not a great idea as PUT_SECRET_VALUE method creates a new version everytime in the AWS secret
+    # and will cause AWS limit issues if you have too many API Keys and need them as part of REST Proxy users.
+    def create_update_rest_proxy_secrets(
         self,
         csm_definitions: CSMDefinitions,
         csm_configs: CSMConfig,
         ccloud_api_key_list: CCloudAPIKeyList,
         ccloud_cluster_list: CCloudClusterList,
         ccloud_sa_list: CCloudServiceAccountList,
+        new_api_keys: List[CCloudAPIKey] = None,
         **kwargs,
     ):
-        new_api_keys = self.__get_new_rest_proxy_api_keys(csm_definitions, ccloud_api_key_list)
+        if not new_api_keys:
+            new_api_keys = self.__get_new_rest_proxy_api_keys(csm_definitions, ccloud_api_key_list)
+
         rest_proxy_users_list = self.__get_rest_proxy_users(csm_definitions, ccloud_api_key_list)
 
         if not rest_proxy_users_list:
