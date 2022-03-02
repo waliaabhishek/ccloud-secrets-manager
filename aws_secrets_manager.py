@@ -244,9 +244,8 @@ class AWSSecretsList(CSMSecretsList):
                 if is_updated:
                     update_triggered = True
             if update_triggered:
-                # TODO: The secret data is updated and now needs to be persisted into AWS Secrets Manager.
-                secret_tags = self.__render_secret_tags()
-                pass
+                response = client.put_secret_value(SecretId=rp_secret_name, SecretString=dumps(rp_secret_data))
+                print(f"Secret Successfully updated. Response\n {response}")
 
 
 def add_secrets_to_rest_proxy_user(
