@@ -71,11 +71,24 @@ class CSMConfigDataMap:
         ccloud_sa_details: CCloudServiceAccountList,
     ):
         sa_in_def = set([v.name for v in csm_definitions.sa])
+        rp_user_sa_in_def = set([v.name for v in csm_definitions.sa if v.is_rp_user])
+        non_rp_user_sa_in_def = set([v.name for v in csm_definitions.sa if not v.is_rp_user])
         sa_in_ccloud = set([v.name for v in ccloud_sa_details.sa.values()])
-        create_req = set(sa_in_def).difference(sa_in_ccloud)
+        # create_req = set(sa_in_def).difference(sa_in_ccloud)
+        rp_create_req = set(rp_user_sa_in_def).difference(sa_in_ccloud)
+        non_rp_create_req = set(non_rp_user_sa_in_def).difference(sa_in_ccloud)
         delete_req = set(sa_in_ccloud).difference(sa_in_def)
 
-        for item in create_req:
+        for item in rp_create_req:
+            sa = csm_definitions.find_service_account(item)
+            if sa:
+                self.add_new_task(
+                    CSMConfigTaskType.create_task,
+                    CSMConfigObjectType.sa_type,
+                    CSMConfigTaskStatus.sts_not_started,
+                    {"sa_name": sa.name, "description": sa.description},
+                )
+        for item in non_rp_create_req:
             sa = csm_definitions.find_service_account(item)
             if sa:
                 self.add_new_task(
@@ -171,6 +184,7 @@ class CSMConfigDataMap:
                 {"sa_name": sa_name, "cluster_id": cluster_id, "env_id": cluster_details.env_id},
             )
 
+    # This function is used to populate the tasks that will be executed during this run.
     def populate_data_map(
         self,
         definitions: yaml_parser.CSMDefinitions,
