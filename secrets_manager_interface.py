@@ -30,10 +30,18 @@ class CSMSecret:
         self.rp_access = rp_access
 
 
-class CSMSecretsList(ABC):
+class CSMSecretsManager(ABC):
     secret: Dict[str, CSMSecret]
 
     def __init__(self) -> None:
+        pass
+
+    @abstractmethod
+    def __login(self):
+        pass
+
+    @abstractmethod
+    def __test_login(self) -> bool:
         pass
 
     @abstractmethod

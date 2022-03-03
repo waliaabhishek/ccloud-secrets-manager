@@ -4,7 +4,7 @@ from typing import OrderedDict, Set, Tuple
 import yaml_parser
 from api_key_manager import CCloudAPIKeyList
 from clusters import CCloudClusterList
-from secrets_manager_interface import CSMSecretsList
+from secrets_manager_interface import CSMSecretsManager
 from service_account import CCloudServiceAccountList
 
 
@@ -114,7 +114,7 @@ class CSMConfigDataMap:
         ccloud_sa_details: CCloudServiceAccountList,
         ccloud_api_key_details: CCloudAPIKeyList,
         ccloud_clusters: CCloudClusterList,
-        secret_list: CSMSecretsList,
+        secret_list: CSMSecretsManager,
     ) -> Tuple[Set[str], Set[str]]:
         api_keys_in_def, api_keys_in_ccloud = set(), set()
         secrets_in_store = set()
@@ -205,7 +205,7 @@ class CSMConfigDataMap:
         ccloud_api_key_details: CCloudAPIKeyList,
         ccloud_clusters: CCloudClusterList,
         csm_configs: yaml_parser.CSMConfig,
-        secret_list: CSMSecretsList,
+        secret_list: CSMSecretsManager,
         is_api_mgmt_disabled: bool,
     ):
         #  Analyze and set up tasks for Service Account management

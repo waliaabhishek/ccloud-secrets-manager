@@ -1,10 +1,10 @@
 from typing import List
-from secrets_manager_interface import CSMSecret, CSMSecretsList
+from secrets_manager_interface import CSMSecret, CSMSecretsManager
 from api_key_manager import CCloudAPIKey, CCloudAPIKeyList
 
 
 def find_api_keys_eligible_for_deletion(
-    csm_secret_list: CSMSecretsList,
+    csm_secret_list: CSMSecretsManager,
     ccloud_api_key_list: CCloudAPIKeyList,
     ignored_sa_list: List[str],
 ) -> List[CCloudAPIKey]:
