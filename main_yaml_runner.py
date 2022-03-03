@@ -115,7 +115,7 @@ def run_workflow():
             secrets_delta = True
     if secrets_delta:
         secret_list.create_update_rest_proxy_secrets(
-            csm_definitions, csm_configs, ccloud_api_key_list, ccloud_cluster_list, ccloud_sa_list
+            csm_definitions, csm_configs, ccloud_api_key_list, ccloud_cluster_list, ccloud_env_list, ccloud_sa_list
         )
 
 
