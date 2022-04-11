@@ -2,6 +2,5 @@ __pycache__
 .idea
 .vscode
 venv
-*.json
 # Added to ignore test configurations for playing around with the tool
 configurations/test*.*
