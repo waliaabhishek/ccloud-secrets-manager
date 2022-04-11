@@ -4,7 +4,6 @@ import app_managers.core.initializers as CSMInit
 import app_managers.core.types as CSMTypes
 import ccloud_managers.api_key_reconciliation as ApiKeyReconciliation
 import ccloud_managers.initializers as CCloudInit
-from app_managers.helpers import printline
 from app_managers.workflow_manager.workflows import WorkflowManager
 
 import app_managers.workflow_manager.generate_definitions as DefinitionsGenerator
@@ -15,7 +14,6 @@ def trigger_workflows(args: Namespace):
     csm_bundle = CSMInit.load_parse_yamls(
         args.csm_config_file_path, args.csm_definitions_file_path, args.csm_generate_definitions_file
     )
-    printline()
 
     # Initialize CCloud Object Cache
     ccloud_bundle = CCloudInit.load_parse_yamls(csm_bundle=csm_bundle)
@@ -36,31 +34,23 @@ def trigger_workflows(args: Namespace):
             secret_bundle=secret_list,
             dry_run=args.dry_run,
         )
-        printline()
         workflow_manager.create_service_accounts()
         if csm_bundle.csm_configs.ccloud.enable_sa_cleanup:
             workflow_manager.delete_service_accounts()
         if not args.disable_api_key_creation:
-            printline()
             workflow_manager.create_api_keys()
             if args.print_delete_eligible_api_keys:
-                printline()
                 delete_eligible_api_keys = ApiKeyReconciliation.find_api_keys_eligible_for_deletion(
                     csm_secret_list=secret_list,
                     cc_api_keys=ccloud_bundle.cc_api_keys,
                     ignored_sa_list=csm_bundle.csm_configs.ccloud.ignore_service_account_list,
                 )
                 if delete_eligible_api_keys:
-                    print(
-                        "Found API Keys that are missing in the secret store but are currently (still) active in CCloud"
-                    )
                     ccloud_bundle.cc_api_keys.print_api_keys(
                         ccloud_sa=ccloud_bundle.cc_service_accounts, api_keys=delete_eligible_api_keys
                     )
                 else:
                     print("No deletion eligible keys detected.")
-            printline()
             is_secret_updated = workflow_manager.update_api_keys_in_secret_manager()
             if is_secret_updated:
-                printline()
                 secret_list.create_update_rest_proxy_secrets(ccloud_bundle=ccloud_bundle, csm_bundle=csm_bundle)
