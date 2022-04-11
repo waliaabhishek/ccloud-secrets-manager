@@ -30,7 +30,6 @@ def trigger_workflows(args: Namespace):
             import secret_managers.aws_secrets_manager as aws_secrets_manager
 
             secret_list = aws_secrets_manager.AWSSecretsList(csm_bundle=csm_bundle)
-            secret_list.read_all_secrets({"secret_manager": ["confluent_cloud"]})
         workflow_manager = WorkflowManager(
             csm_bundle=csm_bundle,
             ccloud_bundle=ccloud_bundle,
@@ -41,10 +40,11 @@ def trigger_workflows(args: Namespace):
         workflow_manager.create_service_accounts()
         if csm_bundle.csm_configs.ccloud.enable_sa_cleanup:
             workflow_manager.delete_service_accounts()
-        printline()
         if not args.disable_api_key_creation:
+            printline()
             workflow_manager.create_api_keys()
             if args.print_delete_eligible_api_keys:
+                printline()
                 delete_eligible_api_keys = ApiKeyReconciliation.find_api_keys_eligible_for_deletion(
                     csm_secret_list=secret_list,
                     cc_api_keys=ccloud_bundle.cc_api_keys,
@@ -59,6 +59,8 @@ def trigger_workflows(args: Namespace):
                     )
                 else:
                     print("No deletion eligible keys detected.")
+            printline()
             is_secret_updated = workflow_manager.update_api_keys_in_secret_manager()
             if is_secret_updated:
+                printline()
                 secret_list.create_update_rest_proxy_secrets(ccloud_bundle=ccloud_bundle, csm_bundle=csm_bundle)
