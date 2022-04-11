@@ -6,6 +6,7 @@ from typing import Dict, List
 
 import app_managers.core.types as CSMBundle
 import boto3
+from botocore.client import Config
 import ccloud_managers.types as CCloudBundle
 from botocore.exceptions import ClientError
 from ccloud_managers.api_key_manager import CCloudAPIKey
@@ -24,7 +25,8 @@ class AWSSecretsList(CSMSecretsManager):
     secret: Dict[str, AWSSecret]
     client_reference = ""
 
-    def __init__(self) -> None:
+    def __init__(self, csm_bundle: CSMBundle.CSMYAMLConfigBundle) -> None:
+        self.csm_bundle = csm_bundle
         self.secret = {}
         self.login()
         self.read_all_secrets()
@@ -32,8 +34,15 @@ class AWSSecretsList(CSMSecretsManager):
     def login(self):
         # AWS makes it pretty simple and all it needs is a few ENV variables.
         # Details here: https://boto3.amazonaws.com/v1/documentation/api/latest/guide/configuration.html#guide-configuration
-        self.client_reference = boto3.client("secretsmanager")
-        if not self.__test_login():
+        login_kwargs = self.csm_bundle.csm_configs.secretstore.configs
+        login_kwargs["service_name"] = "secretsmanager"
+        # The Additional Configs are not entertained by boto3 as kwargs.
+        # We need to create a separate botocore Config object and then pass as
+        extra_configs = login_kwargs.pop("config", None)
+        if extra_configs:
+            extra_configs = Config(**extra_configs)
+        self.client_reference = boto3.client(config=extra_configs, **login_kwargs)
+        if not self.test_login():
             raise Exception("Cannot set up a connection with AWS Secrets Manager. Will not be able to proceed.")
 
     def test_login(self) -> bool:

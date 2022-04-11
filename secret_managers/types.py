@@ -22,9 +22,10 @@ class CSMSecret:
 
 
 class CSMSecretsManager(ABC):
+    csm_bundle: CSMBundle.CSMYAMLConfigBundle
     secret: Dict[str, CSMSecret]
 
-    def __init__(self) -> None:
+    def __init__(self, csm_bundle: CSMBundle.CSMYAMLConfigBundle) -> None:
         pass
 
     @abstractmethod

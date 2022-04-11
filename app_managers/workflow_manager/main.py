@@ -29,7 +29,7 @@ def trigger_workflows(args: Namespace):
         if csm_bundle.csm_configs.secretstore.store_type == CSMTypes.SUPPORTED_STORES.AWS_SECRETS:
             import secret_managers.aws_secrets_manager as aws_secrets_manager
 
-            secret_list = aws_secrets_manager.AWSSecretsList()
+            secret_list = aws_secrets_manager.AWSSecretsList(csm_bundle=csm_bundle)
             secret_list.read_all_secrets({"secret_manager": ["confluent_cloud"]})
         workflow_manager = WorkflowManager(
             csm_bundle=csm_bundle,
