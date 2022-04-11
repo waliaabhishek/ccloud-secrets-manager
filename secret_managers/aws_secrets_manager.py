@@ -216,6 +216,7 @@ class AWSSecretsList(CSMSecretsManager):
         new_api_keys: List[CCloudAPIKey] = None,
         **kwargs,
     ):
+        print("Triggering REST Proxy Secret Update")
         if not new_api_keys:
             new_api_keys = self.__get_new_rest_proxy_api_keys(csm_bundle.csm_definitions, ccloud_bundle.cc_api_keys)
 
