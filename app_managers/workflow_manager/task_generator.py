@@ -31,7 +31,16 @@ class CSMServiceAccountTasks(WorkflowTypes.CSMConfigDataMap):
                 )
 
     def delete_service_account_tasks(self):
+        ignore_sa_id_set = set(self.csm_bundle.csm_configs.ccloud.ignore_service_account_list)
+        ignore_sa_names = set(
+            [
+                item.name
+                for item in self.ccloud_bundle.cc_service_accounts.sa.values()
+                if item.resource_id in ignore_sa_id_set
+            ]
+        )
         req = self.find_items_to_be_deleted(self.sa_in_def, self.sa_in_ccloud)
+        req = self.find_items_to_be_deleted(config_item_names=req, ccloud_item_names=ignore_sa_names)
         for item in req:
             yield WorkflowTypes.CSMConfigTask(
                 task_type=WorkflowTypes.CSMConfigTaskType.delete_task,
