@@ -10,7 +10,7 @@ from botocore.client import Config
 import ccloud_managers.types as CCloudBundle
 from botocore.exceptions import ClientError
 from ccloud_managers.api_key_manager import CCloudAPIKey
-
+from app_managers.helpers import printline
 from secret_managers.types import CSMSecret, CSMSecretsManager
 
 pp = pprint.PrettyPrinter(indent=2)
@@ -216,6 +216,7 @@ class AWSSecretsList(CSMSecretsManager):
         new_api_keys: List[CCloudAPIKey] = None,
         **kwargs,
     ):
+        printline()
         print("Triggering REST Proxy Secret Update")
         if not new_api_keys:
             new_api_keys = self.__get_new_rest_proxy_api_keys(csm_bundle.csm_definitions, ccloud_bundle.cc_api_keys)
