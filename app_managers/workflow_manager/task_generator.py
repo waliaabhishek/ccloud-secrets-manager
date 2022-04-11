@@ -9,13 +9,9 @@ from secret_managers.types import CSMSecretsManager
 class CSMServiceAccountTasks(WorkflowTypes.CSMConfigDataMap):
     sa_in_def: Set[str]
     sa_in_ccloud: Set[str]
-    csm_bundle: CoreTypes.CSMYAMLConfigBundle
-    ccloud_bundle: CCloudConfigBundle
 
     def __init__(self, csm_bundle: CoreTypes.CSMYAMLConfigBundle, ccloud_bundle: CCloudConfigBundle) -> None:
-        super().__init__()
-        self.csm_bundle = csm_bundle
-        self.ccloud_bundle = ccloud_bundle
+        super().__init__(csm_bundle=csm_bundle, ccloud_bundle=ccloud_bundle)
         self.refresh_set_values(csm_bundle=self.csm_bundle, ccloud_bundle=self.ccloud_bundle)
 
     def refresh_set_values(self, csm_bundle: CoreTypes.CSMYAMLConfigBundle, ccloud_bundle: CCloudConfigBundle):
@@ -47,17 +43,13 @@ class CSMServiceAccountTasks(WorkflowTypes.CSMConfigDataMap):
 
 class CSMAPIKeyTasks(WorkflowTypes.CSMConfigDataMap):
     # The set is a combined string with the format SA.name~ClusterID
-    api_keys_in_def: Set[str]
-    api_keys_in_ccloud: Set[str]
-    create_secrets_req: Set[str]
-    update_secrets_req: Set[str]
-    csm_bundle: CoreTypes.CSMYAMLConfigBundle
-    ccloud_bundle: CCloudConfigBundle
+    api_keys_in_def: Set[str] = set()
+    api_keys_in_ccloud: Set[str] = set()
+    create_secrets_req: Set[str] = set()
+    update_secrets_req: Set[str] = set()
 
     def __init__(self, csm_bundle: CoreTypes.CSMYAMLConfigBundle, ccloud_bundle: CCloudConfigBundle) -> None:
-        super().__init__()
-        self.csm_bundle = csm_bundle
-        self.ccloud_bundle = ccloud_bundle
+        super().__init__(csm_bundle=csm_bundle, ccloud_bundle=ccloud_bundle)
         self.refresh_set_values(csm_bundle=self.csm_bundle, ccloud_bundle=self.ccloud_bundle)
 
     def refresh_set_values(self, csm_bundle: CoreTypes.CSMYAMLConfigBundle, ccloud_bundle: CCloudConfigBundle):
@@ -117,8 +109,6 @@ class CSMAPIKeyTasks(WorkflowTypes.CSMConfigDataMap):
 class CSMSecretManagerTasks(WorkflowTypes.CSMConfigDataMap):
     create_secrets_req: Set[str]
     update_secrets_req: Set[str]
-    csm_bundle: CoreTypes.CSMYAMLConfigBundle
-    ccloud_bundle: CCloudConfigBundle
     api_key_tasks: CSMAPIKeyTasks
 
     def __init__(
@@ -127,9 +117,7 @@ class CSMSecretManagerTasks(WorkflowTypes.CSMConfigDataMap):
         ccloud_bundle: CCloudConfigBundle,
         api_key_tasks: CSMAPIKeyTasks,
     ) -> None:
-        super().__init__()
-        self.csm_bundle = csm_bundle
-        self.ccloud_bundle = ccloud_bundle
+        super().__init__(csm_bundle=csm_bundle, ccloud_bundle=ccloud_bundle)
         self.api_key_tasks = api_key_tasks
         self.refresh_set_values(self.api_key_tasks)
 

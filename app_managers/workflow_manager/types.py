@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Set
+import app_managers.core.types as CoreTypes
+from ccloud_managers.types import CCloudConfigBundle
 
 
 class CSMConfigTaskStatus(Enum):
@@ -50,6 +52,13 @@ class CSMConfigTask:
 
 
 class CSMConfigDataMap:
+    csm_bundle: CoreTypes.CSMYAMLConfigBundle
+    ccloud_bundle: CCloudConfigBundle
+
+    def __init__(self, csm_bundle: CoreTypes.CSMYAMLConfigBundle, ccloud_bundle: CCloudConfigBundle) -> None:
+        self.csm_bundle = csm_bundle
+        self.ccloud_bundle = ccloud_bundle
+
     def find_items_to_be_created(self, config_item_names: set[str], ccloud_item_names: set[str]) -> Set[str]:
         return set(config_item_names.difference(ccloud_item_names))
 
