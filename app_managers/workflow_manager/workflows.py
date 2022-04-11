@@ -60,7 +60,7 @@ class WorkflowManager:
     def create_api_keys(self):
         print("Triggering API Key creation workflow")
         self.api_key_tasks.refresh_set_values(csm_bundle=self.csm_bundle, ccloud_bundle=self.ccloud_bundle)
-        for item in self.api_key_tasks.create_api_key_tasks():
+        for item in self.api_key_tasks.create_api_key_tasks(secret_list=self.secret_bundle):
             item.print_task_data()
             if not self.dry_run:
                 sa_details = self.ccloud_bundle.cc_service_accounts.find_sa(item.task_object["sa_name"])
