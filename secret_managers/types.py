@@ -1,33 +1,24 @@
+from dataclasses import dataclass
 import re
 from abc import ABC, abstractmethod
 from tokenize import String
 from typing import Dict, List, Tuple
 
-from api_key_manager import CCloudAPIKey, CCloudAPIKeyList
-from yaml_parser import CSMDefinitions
-from service_account import CCloudServiceAccount, CCloudServiceAccountList
+from ccloud_managers.api_key_manager import CCloudAPIKey
+import ccloud_managers.types as CCloudBundle
+import app_managers.core.types as CSMBundle
 
 
+@dataclass(kw_only=True)
 class CSMSecret:
-    def __init__(
-        self,
-        secret_name: str,
-        secret_value: Dict[str, str],
-        env_id: str,
-        sa_id: str,
-        sa_name: str,
-        cluster_id: str,
-        api_key: str,
-        rp_access: bool,
-    ) -> None:
-        self.secret_name = secret_name
-        self.secret_value = secret_value
-        self.env_id = env_id
-        self.sa_id = sa_id
-        self.sa_name = sa_name
-        self.cluster_id = cluster_id
-        self.api_key = api_key
-        self.rp_access = rp_access
+    secret_name: str
+    secret_value: Dict[str, str]
+    env_id: str
+    sa_id: str
+    sa_name: str
+    cluster_id: str
+    api_key: str
+    rp_access: bool
 
 
 class CSMSecretsManager(ABC):
@@ -37,11 +28,11 @@ class CSMSecretsManager(ABC):
         pass
 
     @abstractmethod
-    def __login(self):
+    def login(self):
         pass
 
     @abstractmethod
-    def __test_login(self) -> bool:
+    def test_login(self) -> bool:
         pass
 
     @abstractmethod
@@ -50,7 +41,7 @@ class CSMSecretsManager(ABC):
 
     @abstractmethod
     def find_secret(
-        self, sa_name: str, sa_list: CCloudServiceAccountList, cluster_id: str = None, **kwargs
+        self, ccloud_bundle: CCloudBundle.CCloudConfigBundle, sa_name: str, cluster_id: str = None, **kwargs
     ) -> List[CSMSecret]:
         pass
 
@@ -59,8 +50,8 @@ class CSMSecretsManager(ABC):
         pass
 
     @abstractmethod
-    def create_update_rest_proxy_secret(
-        self, csm_definitions: CSMDefinitions, ccloud_api_key_list: CCloudAPIKeyList, **kwargs
+    def create_update_rest_proxy_secrets(
+        self, ccloud_bundle: CCloudBundle.CCloudConfigBundle, csm_bundle: CSMBundle.CSMYAMLConfigBundle, **kwargs
     ):
         pass
 
@@ -91,21 +82,25 @@ class CSMSecretsManager(ABC):
     # This method will list all the newly created API Keys that have been flagged as needed REST Proxy access
     def __get_new_rest_proxy_api_keys(
         self,
-        csm_definitions: CSMDefinitions,
-        ccloud_api_key_list: CCloudAPIKeyList,
+        ccloud_bundle: CCloudBundle.CCloudConfigBundle,
+        csm_bundle: CSMBundle.CSMYAMLConfigBundle,
     ) -> List[CCloudAPIKey]:
-        sa_names = [v for v in csm_definitions.sa if v.rp_access]
-        api_key_details = [v for v in ccloud_api_key_list.api_keys.values() if v.owner_id in sa_names and v.api_secret]
+        sa_names = [v for v in csm_bundle.csm_definitions.sa if v.rp_access]
+        api_key_details = [
+            v for v in ccloud_bundle.cc_api_keys.api_keys.values() if v.owner_id in sa_names and v.api_secret
+        ]
         return api_key_details
 
     # This method locates the actual REST proxy Service Accounts, they are necessary
     def __get_rest_proxy_users(
         self,
-        csm_definitions: CSMDefinitions,
-        ccloud_api_key_list: CCloudAPIKeyList,
+        ccloud_bundle: CCloudBundle.CCloudConfigBundle,
+        csm_bundle: CSMBundle.CSMYAMLConfigBundle,
     ) -> List[CCloudAPIKey]:
-        sa_names = [v for v in csm_definitions.sa if v.is_rp_user]
-        api_key_details = [v for v in ccloud_api_key_list.api_keys.values() if v.owner_id in sa_names and v.api_secret]
+        sa_names = [v for v in csm_bundle.csm_definitions.sa if v.is_rp_user]
+        api_key_details = [
+            v for v in ccloud_bundle.cc_api_keys.api_keys.values() if v.owner_id in sa_names and v.api_secret
+        ]
         return api_key_details
 
     def __render_rp_fe_user_string(self, api_key: str, api_secret: str, postfix: str) -> String:

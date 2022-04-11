@@ -1,40 +1,40 @@
 import pprint
 import subprocess
+from dataclasses import dataclass, field
 from datetime import datetime
-from json import dumps, loads
+from json import loads
 from operator import itemgetter
 from typing import Dict, List
 
-import base_ccloud
-import clusters
-import service_account
+import ccloud_managers.service_account as service_account
+from ccloud_managers.connection import CCloudBase
 
 pp = pprint.PrettyPrinter(indent=2)
 
 
+@dataclass
 class CCloudAPIKey:
-    def __init__(
-        self, api_key: str, api_secret: str, api_key_description: str, owner_id: str, cluster_id: str, created_at
-    ) -> None:
-        self.api_key = api_key
-        self.api_secret = api_secret
-        self.api_key_description = api_key_description
-        self.owner_id = owner_id
-        self.cluster_id = cluster_id
-        self.created_at = created_at
+    api_key: str
+    api_secret: str
+    api_key_description: str
+    owner_id: str
+    cluster_id: str
+    created_at: str
 
 
-class CCloudAPIKeyList:
-    api_keys: Dict[str, CCloudAPIKey]
+@dataclass
+class CCloudAPIKeyList(CCloudBase):
+    ccloud_sa: service_account.CCloudServiceAccountList
+    api_keys: Dict[str, CCloudAPIKey] = field(default_factory=dict)
     __CMD_STDERR_TO_STDOUT = " 2>&1 "
 
     # This init function will initiate the base object and then check CCloud
     # for all the active API Keys. All API Keys that are listed in CCloud are
     # the added to a cache.
-    def __init__(self, sa_id_list: service_account.CCloudServiceAccountList) -> None:
-        self.api_keys = {}
+    def __post_init__(self) -> None:
+        super().__post_init__()
         print("Gathering list of all API Key(s) for all Service Account(s) in CCloud.")
-        self.__read_all_api_keys(sa_id_list)
+        self.__read_all_api_keys(self.ccloud_sa)
 
     # This is the base function that will call the command line tool. The command to be
     # executed is passed in as the command parameter.
@@ -47,7 +47,11 @@ class CCloudAPIKeyList:
     def __confluent_cli_login(self):
         cmd_login = "confluent login" + self.__CMD_STDERR_TO_STDOUT
         output = self.__execute_subcommand(cmd_login)
-        if output != "" and not output.startswith("A minor version update is available"):
+        if (
+            output != ""
+            and not output.startswith("A minor version update is available")
+            and not output.startswith("Logged in as")
+        ):
             raise Exception(
                 "Could not login into Confluent Cloud CLI. Please ensure that the credentials are correct." + output
             )
@@ -79,32 +83,35 @@ class CCloudAPIKeyList:
     # This method will help reading all the API Keys that are already provisioned.
     # Please note that the API Secrets cannot be read back again, so if you do not have
     # access to the secret , you will need to generate new api key/secret pair.
-    def __read_all_api_keys(self, sa_id_list: service_account.CCloudServiceAccountList):
+    def __read_all_api_keys(self, ccloud_sa: service_account.CCloudServiceAccountList):
         self.__confluent_cli_login()
         print("Gathering all API Keys.")
         cmd_api_key_list = "confluent api-key list -o json "
         output = loads(self.__execute_subcommand(cmd_api_key_list))
         output = sorted(output, key=itemgetter("created"), reverse=True)
-        sa_list = [item.resource_id for item in sa_id_list.sa.values()]
+        sa_list = [item.resource_id for item in ccloud_sa.sa.values()]
         for key in output:
             if key["owner_resource_id"] in sa_list and key["resource_type"] == "kafka" and key["resource_id"]:
-                print("Found API Key with ID " + key["key"] + " for Service Account " + key["owner_resource_id"])
+                print(
+                    f'API Key: {key["key"]} for SA: {key["owner_resource_id"]}, Resource Type: {key["owner_resource_id"]} will be considered.'
+                )
                 self.__add_to_cache(
-                    key["key"],
-                    "",
-                    key["description"],
-                    key["owner_resource_id"],
-                    key["resource_id"],
-                    key["created"],
+                    CCloudAPIKey(
+                        api_key=key["key"],
+                        api_secret="",
+                        api_key_description=key["description"],
+                        owner_id=key["owner_resource_id"],
+                        cluster_id=key["resource_id"],
+                        created_at=key["created"],
+                    )
+                )
+            else:
+                print(
+                    f'API Key: {key["key"]} for SA: {key["owner_resource_id"]}, Resource Type: {key["owner_resource_id"]} will be ignored.'
                 )
 
-    def __add_to_cache(
-        self, api_key: str, api_secret: str, api_key_description: str, owner_id: str, cluster_id: str, created_at
-    ) -> CCloudAPIKey:
-        self.api_keys[api_key] = CCloudAPIKey(
-            api_key, api_secret, api_key_description, owner_id, cluster_id, created_at
-        )
-        return self.api_keys[api_key]
+    def __add_to_cache(self, api_key: CCloudAPIKey) -> None:
+        self.api_keys[api_key.api_key] = api_key
 
     def delete_keys_from_cache(self, sa_name) -> int:
         count = 0
@@ -148,10 +155,18 @@ class CCloudAPIKeyList:
             + self.__CMD_STDERR_TO_STDOUT
         )
         output = loads(self.__execute_subcommand(cmd_create_api_key))
+        # TODO: Add exception handling for not being able to create the API Key.
         self.__add_to_cache(
-            output["key"], output["secret"], api_key_description, sa_id, cluster_id, str(datetime.now())
+            CCloudAPIKey(
+                api_key=output["key"],
+                api_secret=output["secret"],
+                api_key_description=api_key_description,
+                owner_id=sa_id,
+                cluster_id=cluster_id,
+                created_at=str(datetime.now()),
+            )
         )
-        return output
+        return (output, True)
 
     def delete_api_key(self, api_key: str) -> bool:
         cmd_delete_api_key = "confluent api-key delete " + api_key
@@ -162,9 +177,7 @@ class CCloudAPIKeyList:
             self.__delete_key_from_cache(api_key)
         return True
 
-    def print_api_keys(
-        self, ccloud_sa_list: service_account.CCloudServiceAccountList, key_list: List[CCloudAPIKey] = None
-    ):
+    def print_api_keys(self, ccloud_sa: service_account.CCloudServiceAccountList, api_keys: List[CCloudAPIKey] = None):
         print(
             "{:<20} {:<25} {:<25} {:<20} {:<20} {:<50}".format(
                 "API Key",
@@ -175,12 +188,12 @@ class CCloudAPIKeyList:
                 "API Key Description",
             )
         )
-        if key_list:
-            iter_data = key_list
+        if api_keys:
+            iter_data = api_keys
         else:
             iter_data = [v for v in self.api_keys.values()]
         for item in iter_data:
-            sa_details = ccloud_sa_list.sa[item.owner_id]
+            sa_details = ccloud_sa.sa[item.owner_id]
             print(
                 "{:<20} {:<25} {:<25} {:<20} {:<20} {:<50}".format(
                     item.api_key,

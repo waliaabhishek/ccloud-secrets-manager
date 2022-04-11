@@ -1,33 +1,23 @@
 import hashlib
 import pprint
+from dataclasses import dataclass
 from json import dumps, loads
 from typing import Dict, List
 
+import app_managers.core.types as CSMBundle
 import boto3
+import ccloud_managers.types as CCloudBundle
 from botocore.exceptions import ClientError
+from ccloud_managers.api_key_manager import CCloudAPIKey
 
-import base_ccloud
-from api_key_manager import CCloudAPIKey, CCloudAPIKeyList
-from clusters import CCloudClusterList, CCloudEnvironmentList
-from yaml_parser import CSMConfig, CSMDefinitions
-from secrets_manager_interface import CSMSecret, CSMSecretsManager
-from service_account import CCloudServiceAccountList
+from secret_managers.types import CSMSecret, CSMSecretsManager
 
 pp = pprint.PrettyPrinter(indent=2)
 
 
+@dataclass()
 class AWSSecret(CSMSecret):
-    def __init__(self, secret_name: str, secret_value: Dict[str, str], secret_tags: Dict[str, str]) -> None:
-        super().__init__(
-            secret_name,
-            secret_value,
-            secret_tags["env_id"],
-            secret_tags["sa_id"],
-            secret_tags["sa_name"],
-            secret_tags["cluster_id"],
-            secret_tags["api_key"],
-            True if secret_tags["rest_proxy_access"].upper() == "TRUE" else False,
-        )
+    pass
 
 
 class AWSSecretsList(CSMSecretsManager):
@@ -36,15 +26,17 @@ class AWSSecretsList(CSMSecretsManager):
 
     def __init__(self) -> None:
         self.secret = {}
+        self.login()
+        self.read_all_secrets()
 
-    def __login(self):
+    def login(self):
         # AWS makes it pretty simple and all it needs is a few ENV variables.
         # Details here: https://boto3.amazonaws.com/v1/documentation/api/latest/guide/configuration.html#guide-configuration
         self.client_reference = boto3.client("secretsmanager")
         if not self.__test_login():
             raise Exception("Cannot set up a connection with AWS Secrets Manager. Will not be able to proceed.")
 
-    def __test_login(self) -> bool:
+    def test_login(self) -> bool:
         # TODO: Not sure how to validate if the client is setup or not. But keeping it here, in case this needs to be replaced in the future.
         return True
 
@@ -65,7 +57,11 @@ class AWSSecretsList(CSMSecretsManager):
         output = hashlib.md5(dumps(json_object_data, sort_keys=True).encode("utf-8")).hexdigest()
         return output
 
-    def read_all_secrets(self, filter: Dict[str, List[str]], **kwargs):
+    def read_all_secrets(
+        self,
+        filter: Dict[str, List[str]] = {"secret_manager": ["confluent_cloud"]},
+        **kwargs,
+    ):
         out_filter = self.__create_filter_tags(filter)
         resp = self.client_reference.list_secrets(Filters=out_filter)
         if resp["ResponseMetadata"]["HTTPStatusCode"] != 200:
@@ -81,9 +77,9 @@ class AWSSecretsList(CSMSecretsManager):
         return self.secret[secret_name]
 
     def find_secret(
-        self, sa_name: str, sa_list: CCloudServiceAccountList, cluster_id: str = None, **kwargs
+        self, ccloud_bundle: CCloudBundle.CCloudConfigBundle, sa_name: str, cluster_id: str = None, **kwargs
     ) -> List[AWSSecret]:
-        temp_sa = sa_list.find_sa(sa_name)
+        temp_sa = ccloud_bundle.cc_service_accounts.find_sa(sa_name)
         if cluster_id:
             return [v for v in self.secret.values() if v.sa_id == temp_sa.resource_id and v.cluster_id == cluster_id]
         else:
@@ -121,31 +117,30 @@ class AWSSecretsList(CSMSecretsManager):
     def create_or_update_secret(
         self,
         api_key: CCloudAPIKey,
-        env_list: CCloudEnvironmentList,
-        cluster_list: CCloudClusterList,
-        sa_list: CCloudServiceAccountList,
-        csm_definitions: CSMDefinitions,
-        csm_config: CSMConfig,
+        ccloud_bundle: CCloudBundle.CCloudConfigBundle,
+        csm_bundle: CSMBundle.CSMYAMLConfigBundle,
         secret_name_postfix: str = None,
     ) -> AWSSecret:
-        cluster = cluster_list.find_cluster(api_key.cluster_id)
-        env = env_list.find_environment(cluster.env_id)
+        cluster = ccloud_bundle.cc_clusters.find_cluster(api_key.cluster_id)
+        env = ccloud_bundle.cc_environments.find_environment(cluster.env_id)
 
         secret_name = self.__create_secret_name_string(
-            csm_config.secretstore.configs.get("secret_name_prefix", ""),
-            csm_config.secretstore.configs.get("secret_name_separator", "/"),
+            csm_bundle.csm_configs.secretstore.configs.get("secret_name_prefix", ""),
+            csm_bundle.csm_configs.secretstore.configs.get("secret_name_separator", "/"),
             env.env_id,
             cluster.cluster_id,
             api_key.owner_id,
             secret_name_postfix,
         )
-        def_details = csm_definitions.find_service_account(sa_list.sa[api_key.owner_id].name)
+        def_details = csm_bundle.csm_definitions.find_service_account(
+            ccloud_bundle.cc_service_accounts.sa[api_key.owner_id].name
+        )
         secret_tags = self.__render_secret_tags(
             env.display_name,
             env.env_id,
             cluster.cluster_name,
             api_key.cluster_id,
-            sa_list.sa[api_key.owner_id].name,
+            ccloud_bundle.cc_service_accounts.sa[api_key.owner_id].name,
             api_key.owner_id,
             def_details.rp_access,
         )
@@ -207,19 +202,15 @@ class AWSSecretsList(CSMSecretsManager):
     # and will cause AWS limit issues if you have too many API Keys and need them as part of REST Proxy users.
     def create_update_rest_proxy_secrets(
         self,
-        csm_definitions: CSMDefinitions,
-        csm_configs: CSMConfig,
-        ccloud_api_key_list: CCloudAPIKeyList,
-        ccloud_cluster_list: CCloudClusterList,
-        ccloud_env_list: CCloudEnvironmentList,
-        ccloud_sa_list: CCloudServiceAccountList,
+        ccloud_bundle: CCloudBundle.CCloudConfigBundle,
+        csm_bundle: CSMBundle.CSMYAMLConfigBundle,
         new_api_keys: List[CCloudAPIKey] = None,
         **kwargs,
     ):
         if not new_api_keys:
-            new_api_keys = self.__get_new_rest_proxy_api_keys(csm_definitions, ccloud_api_key_list)
+            new_api_keys = self.__get_new_rest_proxy_api_keys(csm_bundle.csm_definitions, ccloud_bundle.cc_api_keys)
 
-        rest_proxy_users_list = self.__get_rest_proxy_users(csm_definitions, ccloud_api_key_list)
+        rest_proxy_users_list = self.__get_rest_proxy_users(csm_bundle.csm_definitions, ccloud_bundle.cc_api_keys)
 
         if not rest_proxy_users_list:
             raise Exception(
@@ -228,7 +219,7 @@ class AWSSecretsList(CSMSecretsManager):
 
         cluster_list = set([v.cluster_id for v in new_api_keys])
         for item in cluster_list:
-            cluster_details = ccloud_cluster_list.find_cluster(item)
+            cluster_details = ccloud_bundle.cc_clusters.find_cluster(item)
             rest_proxy_user = ""
             for rp_iter in rest_proxy_users_list:
                 if rp_iter.cluster_id == item:
@@ -237,12 +228,12 @@ class AWSSecretsList(CSMSecretsManager):
             if not rest_proxy_user:
                 raise Exception(f"Could not find the REST Proxy Service Account to set up secret in {item} cluster. ")
             rp_secret_name = self.__create_secret_name_string(
-                csm_configs.secretstore.prefix,
-                csm_configs.secretstore.separator,
+                csm_bundle.csm_configs.secretstore.prefix,
+                csm_bundle.csm_configs.secretstore.separator,
                 cluster_details.env_id,
                 cluster_details.cluster_id,
                 rest_proxy_user.owner_id,
-                csm_configs.ccloud.rest_proxy_secret_name,
+                csm_bundle.csm_configs.ccloud.rest_proxy_secret_name,
             )
             rp_secret = self.get_secret(rp_secret_name)
             if rp_secret:
@@ -266,13 +257,13 @@ class AWSSecretsList(CSMSecretsManager):
                     update_triggered = True
             if update_triggered:
                 if is_new_secret:
-                    env_details = ccloud_env_list.find_environment(cluster_details.env_id)
+                    env_details = ccloud_bundle.cc_environments.find_environment(cluster_details.env_id)
                     secret_tags = self.__render_secret_tags(
                         env_details.display_name,
                         env_details.env_id,
                         cluster_details.cluster_name,
                         cluster_details.cluster_id,
-                        ccloud_sa_list.sa[rest_proxy_user.owner_id].name,
+                        ccloud_bundle.cc_service_accounts.sa[rest_proxy_user.owner_id].name,
                         rest_proxy_user.owner_id,
                         True,
                     )

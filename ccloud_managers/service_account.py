@@ -1,33 +1,33 @@
-from yaml_parser import CSMConfig
-from typing import Dict, List, Tuple
+from dataclasses import dataclass, field
+from typing import Dict, Tuple
 from urllib import parse
 
+import app_managers.core.types as CSMBundle
 import requests
 
-import base_ccloud
+from ccloud_managers.connection import CCloudBase
 
 
+@dataclass
 class CCloudServiceAccount:
-    def __init__(self, res_id: str, name: str, description: str, created_at, updated_at, is_ignored: bool) -> None:
-        self.resource_id = res_id
-        self.name = name
-        self.description = description
-        self.created_at = created_at
-        self.updated_at = updated_at
-        self.is_ignored = is_ignored
+    resource_id: str
+    name: str
+    description: str
+    created_at: str
+    updated_at: str
+    is_ignored: bool
 
 
-class CCloudServiceAccountList:
+@dataclass(kw_only=True)
+class CCloudServiceAccountList(CCloudBase):
 
-    sa: Dict[str, CCloudServiceAccount]
+    _csm_bundle: CSMBundle.CSMYAMLConfigBundle
+    sa: Dict[str, CCloudServiceAccount] = field(default_factory=dict)
 
-    def __init__(self, ccloud_connection: base_ccloud.CCloudConnection, csm_config: CSMConfig) -> None:
-        uri = base_ccloud.URIDetails()
-        self.sa_url = uri.get_endpoint_url(uri.service_accounts)
-        self.auth = ccloud_connection.api_http_basic_auth
-        self.sa = {}
-        print("Gathering list of all Service Account(s) in CCloud.")
-        self.read_all_sa({"page_size": 50}, csm_config)
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        self.url = self._ccloud_connection.get_endpoint_url(key=self._ccloud_connection.uri.service_accounts)
+        self.read_all_sa(params={"page_size": 50}, csm_bundle=self._csm_bundle)
 
     def __str__(self) -> str:
         for item in self.sa.values():
@@ -40,38 +40,40 @@ class CCloudServiceAccountList:
             return False
 
     # Read ALL Service Account details from Confluent Cloud
-    def read_all_sa(self, params, csm_config: CSMConfig):
-        resp = requests.get(url=self.sa_url, auth=self.auth, params=params)
+    def read_all_sa(self, params, csm_bundle: CSMBundle.CSMYAMLConfigBundle):
+        resp = requests.get(url=self.url, auth=self.http_connection, params=params)
         if resp.status_code == 200:
             out_json = resp.json()
             for item in out_json["data"]:
-                print("Found Service Account " + item["id"] + " with name " + item["display_name"])
+                is_in_ignored_list = (
+                    True if item["id"] in csm_bundle.csm_configs.ccloud.ignore_service_account_list else False
+                )
                 if (
-                    csm_config.ccloud.detect_ignore_ccloud_internal_accounts
+                    csm_bundle.csm_configs.ccloud.detect_ignore_ccloud_internal_accounts
                     and self.__try_detect_internal_service_accounts(item["display_name"])
                 ):
-                    csm_config.ccloud.ignore_service_account_list.append(item["id"])
+                    csm_bundle.csm_configs.ccloud.ignore_service_account_list.append(item["id"])
+                    is_in_ignored_list = True
                 self.__add_to_cache(
-                    item["id"],
-                    item["display_name"],
-                    item["description"],
-                    item["metadata"]["created_at"],
-                    item["metadata"]["updated_at"],
-                    True if item["id"] in csm_config.ccloud.ignore_service_account_list else False,
+                    CCloudServiceAccount(
+                        resource_id=item["id"],
+                        name=item["display_name"],
+                        description=item["description"],
+                        created_at=item["metadata"]["created_at"],
+                        updated_at=item["metadata"]["updated_at"],
+                        is_ignored=is_in_ignored_list,
+                    )
                 )
+                print(f"Found SA: {item['id']}; Is Ignored: {is_in_ignored_list} with name {item['display_name']}")
             if "next" in out_json["metadata"]:
                 query_params = parse.parse_qs(parse.urlsplit(out_json["metadata"]["next"]).query)
                 params["page_token"] = str(query_params["page_token"][0])
                 self.read_all_sa(params)
-            # pp.pprint(out_json)
         else:
             raise Exception("Could not connect to Confluent Cloud. Please check your settings. " + resp.text)
 
-    def __add_to_cache(
-        self, res_id: str, name: str, description: str, created_at, updated_at, is_ignored: bool
-    ) -> CCloudServiceAccount:
-        self.sa[res_id] = CCloudServiceAccount(res_id, name, description, created_at, updated_at, is_ignored)
-        return self.sa[res_id]
+    def __add_to_cache(self, ccloud_sa: CCloudServiceAccount) -> None:
+        self.sa[ccloud_sa.resource_id] = ccloud_sa
 
     # Read/Find one SA from the cache
     def find_sa(self, sa_name):
@@ -96,24 +98,22 @@ class CCloudServiceAccountList:
             else description,
         }
         resp = requests.post(
-            url=self.sa_url,
-            auth=self.auth,
+            url=self.url,
+            auth=self.http_connection,
             json=payload,
         )
         if resp.status_code == 201:
             sa_details = resp.json()
-            # pp.pprint(sa_details)
-            return (
-                self.__add_to_cache(
-                    sa_details["id"],
-                    sa_details["display_name"],
-                    sa_details["description"],
-                    sa_details["metadata"]["created_at"],
-                    sa_details["metadata"]["updated_at"],
-                    False,
-                ),
-                True,
+            sa_value = CCloudServiceAccount(
+                resource_id=sa_details["id"],
+                name=sa_details["display_name"],
+                description=sa_details["description"],
+                created_at=sa_details["metadata"]["created_at"],
+                updated_at=sa_details["metadata"]["updated_at"],
+                is_ignored=False,
             )
+            self.__add_to_cache(ccloud_sa=sa_value)
+            return (sa_value, True)
         else:
             raise Exception("Could not connect to Confluent Cloud. Please check your settings. " + resp.text)
 
@@ -123,7 +123,7 @@ class CCloudServiceAccountList:
             print("Did not find Service Account with name '" + sa_name + "'. Not deleting anything.")
             return False
         else:
-            resp = requests.delete(url=str(self.sa_url + "/" + temp.resource_id), auth=self.auth)
+            resp = requests.delete(url=str(self.url + "/" + temp.resource_id), auth=self.http_connection)
             if resp.status_code == 204:
                 self.__delete_from_cache(temp.resource_id)
                 return True
