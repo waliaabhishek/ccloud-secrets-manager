@@ -51,6 +51,7 @@ class CCloudAPIKeyList(CCloudBase):
             output != ""
             and not output.startswith("A minor version update is available")
             and not output.startswith("Logged in as")
+            and not output.startswith("Your token has expired. You are now logged out.\nLogged in as")
         ):
             raise Exception(
                 "Could not login into Confluent Cloud CLI. Please ensure that the credentials are correct." + output
