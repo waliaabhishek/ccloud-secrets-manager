@@ -6,6 +6,7 @@ from app_managers.workflow_manager.task_generator import CSMAPIKeyTasks, CSMSecr
 from app_managers.workflow_manager.types import CSMConfigTaskStatus
 from ccloud_managers.types import CCloudConfigBundle
 from secret_managers.types import CSMSecretsManager
+from app_managers.helpers import printline
 
 
 @dataclass(kw_only=True)
@@ -26,6 +27,7 @@ class WorkflowManager:
         )
 
     def create_service_accounts(self):
+        printline()
         print("Triggering Service Account creation Workflow")
         self.sa_tasks.refresh_set_values(csm_bundle=self.csm_bundle, ccloud_bundle=self.ccloud_bundle)
         for item in self.sa_tasks.create_service_account_tasks():
@@ -43,6 +45,7 @@ class WorkflowManager:
                     )
 
     def delete_service_accounts(self):
+        printline()
         print("Triggering Service Account deletion Workflow")
         self.sa_tasks.refresh_set_values(csm_bundle=self.csm_bundle, ccloud_bundle=self.ccloud_bundle)
         for item in self.sa_tasks.delete_service_account_tasks():
@@ -58,6 +61,7 @@ class WorkflowManager:
                     )
 
     def create_api_keys(self):
+        printline()
         print("Triggering API Key creation workflow")
         self.api_key_tasks.refresh_set_values(csm_bundle=self.csm_bundle, ccloud_bundle=self.ccloud_bundle)
         for item in self.api_key_tasks.create_api_key_tasks(secret_list=self.secret_bundle):
@@ -79,8 +83,9 @@ class WorkflowManager:
                     )
 
     def update_api_keys_in_secret_manager(self) -> bool:
-        is_secret_updated = False
+        printline()
         print("Triggering Secret Manager Update workflow")
+        is_secret_updated = False
         self.secret_tasks.refresh_set_values(api_key_tasks=self.api_key_tasks)
         for item in itertools.chain(self.secret_tasks.create_secret_tasks(), self.secret_tasks.update_secret_tasks()):
             item.print_task_data()
