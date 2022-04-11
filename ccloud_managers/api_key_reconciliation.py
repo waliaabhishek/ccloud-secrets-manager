@@ -10,6 +10,7 @@ def find_api_keys_eligible_for_deletion(
     cc_api_keys: CCloudAPIKeyList,
     ignored_sa_list: List[str],
 ) -> List[CCloudAPIKey]:
+    print("Finding APi Keys Eligible for Deletion")
     output: List[CCloudAPIKey] = []
     api_keys_in_ccloud = set([k for k in cc_api_keys.api_keys.keys()])
     api_keys_in_secret_store = set([v.api_key for v in csm_secret_list.secret.values()])
