@@ -41,7 +41,7 @@ class CSMYAMLCCloudConfigs:
 class CSMYAMLSecretStoreConfigs:
     is_enabled: bool
     store_type: str
-    configs: list
+    configs: dict = field(default_factory=dict)
     prefix: str = field(default="")
     separator: str = field(default="/")
 
@@ -58,7 +58,14 @@ class CSMYAMLSecretStoreConfigs:
         temp_configs = {}
         for item in self.configs:
             for k, v in item.items():
-                temp_configs[k] = v
+                if isinstance(v, list):
+                    inner_v = {}
+                    for inner_item in v:
+                        if isinstance(inner_item, dict):
+                            inner_v.update(inner_item)
+                    temp_configs[k] = inner_v
+                else:
+                    temp_configs[k] = v
         self.configs = temp_configs
 
     def __str__(self) -> None:
