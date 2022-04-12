@@ -3,7 +3,7 @@ import app_managers.helpers as helpers
 import yaml
 
 
-def load_parse_yamls(
+def initialize(
     config_yaml_path: str, def_yaml_path: str, generate_def_yaml: bool = False
 ) -> types.CSMYAMLConfigBundle:
     print("Trying to parse Configuration File: " + config_yaml_path)
@@ -69,5 +69,5 @@ def load_parse_yamls(
 
 
 if __name__ == "__main__":
-    csm_bundle = load_parse_yamls("config.yaml", "definitions.yaml")
+    csm_bundle = initialize("config.yaml", "definitions.yaml")
     print("")

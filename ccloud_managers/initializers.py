@@ -8,7 +8,7 @@ from ccloud_managers.service_account import CCloudServiceAccountList
 from ccloud_managers.types import CCloudConfigBundle
 
 
-def load_parse_yamls(csm_bundle: CSMYAMLConfigBundle) -> CCloudConfigBundle:
+def initialize(csm_bundle: CSMYAMLConfigBundle) -> CCloudConfigBundle:
     ccloud_conn = CCloudConnection(csm_bundle=csm_bundle)
     printline()
     # Gather Environment List from CCloud

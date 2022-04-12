@@ -10,12 +10,12 @@ import app_managers.workflow_manager.generate_definitions as DefinitionsGenerato
 
 def trigger_workflows(args: Namespace):
     # parse the YAML files for the input configurations
-    csm_bundle = CSMInit.load_parse_yamls(
+    csm_bundle = CSMInit.initialize(
         args.csm_config_file_path, args.csm_definitions_file_path, args.csm_generate_definitions_file
     )
 
     # Initialize CCloud Object Cache
-    ccloud_bundle = CCloudInit.load_parse_yamls(csm_bundle=csm_bundle)
+    ccloud_bundle = CCloudInit.initialize(csm_bundle=csm_bundle)
 
     # If the Generate YAML is True, we will parse the data and render a YAML file
     if args.csm_generate_definitions_file:
