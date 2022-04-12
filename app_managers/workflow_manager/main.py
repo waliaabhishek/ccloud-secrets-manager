@@ -34,8 +34,6 @@ def trigger_workflows(args: Namespace):
             dry_run=args.dry_run,
         )
         workflow_manager.create_service_accounts()
-        if csm_bundle.csm_configs.ccloud.enable_sa_cleanup:
-            workflow_manager.delete_service_accounts()
         if not args.disable_api_key_creation:
             workflow_manager.create_api_keys()
             if csm_bundle.csm_configs.ccloud.enable_api_key_cleanup:
@@ -43,3 +41,5 @@ def trigger_workflows(args: Namespace):
             is_secret_updated = workflow_manager.update_api_keys_in_secret_manager()
             if is_secret_updated:
                 secret_list.create_update_rest_proxy_secrets(ccloud_bundle=ccloud_bundle, csm_bundle=csm_bundle)
+        if csm_bundle.csm_configs.ccloud.enable_sa_cleanup:
+            workflow_manager.delete_service_accounts()
