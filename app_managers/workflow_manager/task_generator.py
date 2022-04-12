@@ -40,7 +40,7 @@ class CSMServiceAccountTasks(WorkflowTypes.CSMConfigDataMap):
             ]
         )
         req = self.find_items_to_be_deleted(self.sa_in_def, self.sa_in_ccloud)
-        req = self.find_items_to_be_deleted(config_item_names=req, ccloud_item_names=ignore_sa_names)
+        req = self.find_items_to_be_deleted(config_item_names=ignore_sa_names, ccloud_item_names=req)
         for item in req:
             yield WorkflowTypes.CSMConfigTask(
                 task_type=WorkflowTypes.CSMConfigTaskType.delete_task,
@@ -140,7 +140,9 @@ class CSMAPIKeyTasks(WorkflowTypes.CSMConfigDataMap):
             value = item.split("~", 1)
             sa_name, cluster_id = value[0], value[1]
             sa_id = self.ccloud_bundle.cc_service_accounts.find_sa(sa_name=sa_name)
-            for key in self.ccloud_bundle.cc_api_keys.find_keys_with_sa_and_cluster(sa_id=sa_id, cluster_id=cluster_id):
+            for key in self.ccloud_bundle.cc_api_keys.find_keys_with_sa_and_cluster(
+                sa_id=sa_id, cluster_id=cluster_id
+            ):
                 yield WorkflowTypes.CSMConfigTask(
                     task_type=WorkflowTypes.CSMConfigTaskType.delete_task,
                     object_type=WorkflowTypes.CSMConfigObjectType.api_key_type,
