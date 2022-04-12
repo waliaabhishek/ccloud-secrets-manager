@@ -134,8 +134,8 @@ class AWSSecretsList(CSMSecretsManager):
         env = ccloud_bundle.cc_environments.find_environment(cluster.env_id)
 
         secret_name = self.__create_secret_name_string(
-            csm_bundle.csm_configs.secretstore.configs.get("secret_name_prefix", ""),
-            csm_bundle.csm_configs.secretstore.configs.get("secret_name_separator", "/"),
+            csm_bundle.csm_configs.secretstore.prefix,
+            csm_bundle.csm_configs.secretstore.separator,
             env.env_id,
             cluster.cluster_id,
             api_key.owner_id,
