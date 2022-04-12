@@ -48,7 +48,7 @@ class CSMConfigTask:
         self.status_message = status_msg
         if object_payload:
             self.task_object = object_payload
-        self.print_task_data
+        self.print_task_data()
 
 
 class CSMConfigDataMap:
