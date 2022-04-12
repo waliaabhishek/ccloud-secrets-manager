@@ -82,6 +82,21 @@ class WorkflowManager:
                         object_payload={"api_key": new_api_key["key"], "env_id": item.task_object["env_id"]},
                     )
 
+    def delete_api_keys(self):
+        printline()
+        print("Triggering API Key deletion workflow")
+        self.api_key_tasks.refresh_set_values(csm_bundle=self.csm_bundle, ccloud_bundle=self.ccloud_bundle)
+        for item in self.api_key_tasks.delete_api_key_tasks():
+            item.print_task_data()
+            if not self.dry_run:
+                is_success = self.ccloud_bundle.cc_api_keys.delete_api_key(api_key=item.task_object["api_key"])
+                if is_success:
+                    item.set_task_status(
+                        task_status=CSMConfigTaskStatus.sts_success,
+                        status_msg="API Key deletion succeeded.",
+                        object_payload=item.task_object,
+                    )
+
     def update_api_keys_in_secret_manager(self) -> bool:
         printline()
         print("Triggering Secret Manager Update workflow")
