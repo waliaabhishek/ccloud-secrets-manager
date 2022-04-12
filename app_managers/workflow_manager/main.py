@@ -2,7 +2,6 @@ from argparse import Namespace
 
 import app_managers.core.initializers as CSMInit
 import app_managers.core.types as CSMTypes
-import ccloud_managers.api_key_reconciliation as ApiKeyReconciliation
 import ccloud_managers.initializers as CCloudInit
 from app_managers.workflow_manager.workflows import WorkflowManager
 
@@ -39,18 +38,8 @@ def trigger_workflows(args: Namespace):
             workflow_manager.delete_service_accounts()
         if not args.disable_api_key_creation:
             workflow_manager.create_api_keys()
-            if args.print_delete_eligible_api_keys:
-                delete_eligible_api_keys = ApiKeyReconciliation.find_api_keys_eligible_for_deletion(
-                    csm_secret_list=secret_list,
-                    cc_api_keys=ccloud_bundle.cc_api_keys,
-                    ignored_sa_list=csm_bundle.csm_configs.ccloud.ignore_service_account_list,
-                )
-                if delete_eligible_api_keys:
-                    ccloud_bundle.cc_api_keys.print_api_keys(
-                        ccloud_sa=ccloud_bundle.cc_service_accounts, api_keys=delete_eligible_api_keys
-                    )
-                else:
-                    print("No deletion eligible keys detected.")
+            if csm_bundle.csm_configs.ccloud.enable_api_key_cleanup:
+                workflow_manager.delete_api_keys()
             is_secret_updated = workflow_manager.update_api_keys_in_secret_manager()
             if is_secret_updated:
                 secret_list.create_update_rest_proxy_secrets(ccloud_bundle=ccloud_bundle, csm_bundle=csm_bundle)
