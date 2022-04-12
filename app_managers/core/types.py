@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Literal, Tuple
+from typing import List, Tuple
 
 from app_managers.helpers import check_pair
 from app_managers.helpers import pretty as pp
@@ -31,6 +31,7 @@ class CSMYAMLCCloudConfigs:
     ignore_service_account_list: List[str] = field(default_factory=list)
     detect_ignore_ccloud_internal_accounts: bool = False
     enable_sa_cleanup: bool = False
+    enable_api_key_cleanup: bool = False
 
     def __post_init__(self) -> None:
         check_pair("api_key", self.api_key, "api_secret", self.api_secret)

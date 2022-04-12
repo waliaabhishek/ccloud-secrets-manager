@@ -25,6 +25,7 @@ def load_parse_yamls(
         if "detect_ignore_ccloud_internal_accounts" in temp
         else False,
         enable_sa_cleanup=temp["enable_sa_cleanup"] if "enable_sa_cleanup" in temp else False,
+        enable_api_key_cleanup=temp["enable_api_key_cleanup"] if "enable_api_key_cleanup" in temp else False,
     )
 
     temp = csm_config["configs"]["secret_store"]
