@@ -185,10 +185,7 @@ class AWSSecretsList(CSMSecretsManager):
             print("Not updating Secret with the provided value as current value is same as the older value.")
         else:
             print(
-                "Updating "
-                + secret_name
-                + " with the new API Key & Secret values. API Key ID: "
-                + new_secret_values["username"]
+                f'Updating {secret_name} with the new API Key & Secret values. API Key ID: {new_secret_values["username"]}'
             )
             resp = self.client_reference.put_secret_value(
                 SecretId=secret_name,
