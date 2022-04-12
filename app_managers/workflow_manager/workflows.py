@@ -21,14 +21,16 @@ class WorkflowManager:
 
     def __post_init__(self) -> None:
         self.sa_tasks = CSMServiceAccountTasks(csm_bundle=self.csm_bundle, ccloud_bundle=self.ccloud_bundle)
-        self.api_key_tasks = CSMAPIKeyTasks(csm_bundle=self.csm_bundle, ccloud_bundle=self.ccloud_bundle)
+        self.api_key_tasks = CSMAPIKeyTasks(
+            csm_bundle=self.csm_bundle, ccloud_bundle=self.ccloud_bundle, secret_bundle=self.secret_bundle
+        )
         self.secret_tasks = CSMSecretManagerTasks(
             csm_bundle=self.csm_bundle, ccloud_bundle=self.ccloud_bundle, api_key_tasks=self.api_key_tasks
         )
 
     def create_service_accounts(self):
         printline()
-        print("Triggering Service Account creation Workflow")
+        print(f"Triggering Service Account creation Workflow. Dry Run flag: {self.dry_run}")
         self.sa_tasks.refresh_set_values(csm_bundle=self.csm_bundle, ccloud_bundle=self.ccloud_bundle)
         for item in self.sa_tasks.create_service_account_tasks():
             item.print_task_data()
@@ -46,7 +48,7 @@ class WorkflowManager:
 
     def delete_service_accounts(self):
         printline()
-        print("Triggering Service Account deletion Workflow")
+        print("Triggering Service Account deletion Workflow. Dry Run flag: {self.dry_run}")
         self.sa_tasks.refresh_set_values(csm_bundle=self.csm_bundle, ccloud_bundle=self.ccloud_bundle)
         for item in self.sa_tasks.delete_service_account_tasks():
             item.print_task_data()
@@ -62,9 +64,9 @@ class WorkflowManager:
 
     def create_api_keys(self):
         printline()
-        print("Triggering API Key creation workflow")
+        print("Triggering API Key creation workflow. Dry Run flag: {self.dry_run}")
         self.api_key_tasks.refresh_set_values(csm_bundle=self.csm_bundle, ccloud_bundle=self.ccloud_bundle)
-        for item in self.api_key_tasks.create_api_key_tasks(secret_list=self.secret_bundle):
+        for item in self.api_key_tasks.create_api_key_tasks():
             item.print_task_data()
             if not self.dry_run:
                 sa_details = self.ccloud_bundle.cc_service_accounts.find_sa(item.task_object["sa_name"])
@@ -84,7 +86,7 @@ class WorkflowManager:
 
     def delete_api_keys(self):
         printline()
-        print("Triggering API Key deletion workflow")
+        print("Triggering API Key deletion workflow. Dry Run flag: {self.dry_run}")
         self.api_key_tasks.refresh_set_values(csm_bundle=self.csm_bundle, ccloud_bundle=self.ccloud_bundle)
         for item in self.api_key_tasks.delete_api_key_tasks():
             item.print_task_data()
@@ -99,7 +101,7 @@ class WorkflowManager:
 
     def update_api_keys_in_secret_manager(self) -> bool:
         printline()
-        print("Triggering Secret Manager Update workflow")
+        print("Triggering Secret Manager Update workflow. Dry Run flag: {self.dry_run}")
         is_secret_updated = False
         self.secret_tasks.refresh_set_values(api_key_tasks=self.api_key_tasks)
         for item in itertools.chain(self.secret_tasks.create_secret_tasks(), self.secret_tasks.update_secret_tasks()):
