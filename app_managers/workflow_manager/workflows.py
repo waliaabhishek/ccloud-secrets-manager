@@ -81,7 +81,11 @@ class WorkflowManager:
                     item.set_task_status(
                         task_status=CSMConfigTaskStatus.sts_success,
                         status_msg="API Key creation succeeded.",
-                        object_payload={"api_key": new_api_key["key"], "env_id": item.task_object["env_id"]},
+                        object_payload={
+                            "api_key": new_api_key["key"],
+                            "env_id": item.task_object["env_id"],
+                            "cluster_id": item.task_object["cluster_id"],
+                        },
                     )
 
     def delete_api_keys(self):
