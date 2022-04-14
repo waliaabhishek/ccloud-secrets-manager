@@ -41,7 +41,7 @@ def trigger_workflows(args: Namespace):
             #     workflow_manager.delete_api_keys()
 
             # Secret management Workflows
-            _ = workflow_manager.update_api_keys_in_secret_manager()
+            workflow_manager.update_api_keys_in_secret_manager()
             workflow_manager.update_rest_proxy_api_keys_in_secret_manager()
         if csm_bundle.csm_configs.ccloud.enable_sa_cleanup:
             workflow_manager.delete_service_accounts()
