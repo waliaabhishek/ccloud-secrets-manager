@@ -6,7 +6,7 @@ pretty = pprint.PrettyPrinter(indent=2)
 
 
 def get_env_var(var_name: str):
-    if environ.get(var_name) is None:
+    if environ.get(var_name.strip()) is None:
         raise Exception("Cannot find environment variable " + var_name)
     else:
         return environ[var_name]
@@ -23,6 +23,12 @@ def find_replace_env_vars(input: str, env_prefix=ENV_PREFIX):
 def env_parse_replace(input):
     if isinstance(input, dict):
         for k, v in input.items():
+            if isinstance(v, dict) or isinstance(v, list):
+                env_parse_replace(v)
+            elif isinstance(v, str):
+                input[k] = find_replace_env_vars(v)
+    elif isinstance(input, list):
+        for k, v in enumerate(input):
             if isinstance(v, dict) or isinstance(v, list):
                 env_parse_replace(v)
             elif isinstance(v, str):
