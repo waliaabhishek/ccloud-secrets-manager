@@ -59,7 +59,7 @@ def initialize(
                 email_address=item.get("team_email_address", None),
                 cluster_list=item["api_key_access"],
                 is_rp_user=rp_user,
-                rp_access=rp_access if not rp_user else True,
+                rp_access=True if rp_user else rp_access,
             )
             csm_definitions.add_service_account(csm_sa=csm_sa)
         return types.CSMYAMLConfigBundle(csm_configs=csm_configs, csm_definitions=csm_definitions)

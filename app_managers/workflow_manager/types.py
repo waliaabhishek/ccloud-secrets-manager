@@ -22,6 +22,7 @@ class CSMConfigObjectType(Enum):
     sa_type = "service-account"
     api_key_type = "api-key"
     secret_store_type = "secrets-store"
+    rest_proxy_user_type = "rest-proxy-user"
 
 
 @dataclass

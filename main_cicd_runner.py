@@ -56,3 +56,4 @@ if __name__ == "__main__":
     printline()
     # Trigger Workflows
     WorkflowManager.trigger_workflows(args=args)
+    printline()
