@@ -42,11 +42,12 @@ class CSMServiceAccountTasks(WorkflowTypes.CSMConfigDataMap):
         req = self.find_items_to_be_deleted(self.sa_in_def, self.sa_in_ccloud)
         req = self.find_items_to_be_deleted(config_item_names=ignore_sa_names, ccloud_item_names=req)
         for item in req:
+            sa_details = self.ccloud_bundle.cc_service_accounts.find_sa(sa_name=item)
             yield WorkflowTypes.CSMConfigTask(
                 task_type=WorkflowTypes.CSMConfigTaskType.delete_task,
                 object_type=WorkflowTypes.CSMConfigObjectType.sa_type,
                 status=WorkflowTypes.CSMConfigTaskStatus.sts_not_started,
-                task_object={"sa_name": item},
+                task_object={"sa_name": item, "sa_id": sa_details.resource_id},
             )
 
 
@@ -154,21 +155,35 @@ class CSMAPIKeyTasks(WorkflowTypes.CSMConfigDataMap):
 class CSMSecretManagerTasks(WorkflowTypes.CSMConfigDataMap):
     create_secrets_req: Set[str]
     update_secrets_req: Set[str]
+    definition_rest_proxy_users: Set[str]
     api_key_tasks: CSMAPIKeyTasks
+    secret_bundle: CSMSecretsManager
 
     def __init__(
         self,
         csm_bundle: CoreTypes.CSMYAMLConfigBundle,
         ccloud_bundle: CCloudConfigBundle,
         api_key_tasks: CSMAPIKeyTasks,
+        secret_bundle: CSMSecretsManager,
     ) -> None:
         super().__init__(csm_bundle=csm_bundle, ccloud_bundle=ccloud_bundle)
         self.api_key_tasks = api_key_tasks
+        self.secret_bundle = secret_bundle
+        self.definition_rest_proxy_users = set()
         self.refresh_set_values(self.api_key_tasks)
 
     def refresh_set_values(self, api_key_tasks: CSMAPIKeyTasks):
+        # the tokens will be in the format SA_NAME~CLUSTER_ID
         self.create_secrets_req = api_key_tasks.create_secrets_req
         self.update_secrets_req = api_key_tasks.update_secrets_req
+        # Derive the Rest Proxy User from Definitions file
+        for sa in self.csm_bundle.csm_definitions.sa:
+            if sa.is_rp_user:
+                if "FORCE_ALL_CLUSTERS" in sa.cluster_list:
+                    cluster_list = set([item.cluster_id for item in self.ccloud_bundle.cc_clusters.cluster.values()])
+                else:
+                    cluster_list = set(sa.cluster_list)
+                self.definition_rest_proxy_users.update(set([str(f"{sa.name}~{cluster}") for cluster in cluster_list]))
 
     def create_secret_tasks(self):
         for item in self.create_secrets_req:
@@ -207,3 +222,35 @@ class CSMSecretManagerTasks(WorkflowTypes.CSMConfigDataMap):
                     "is_rp_user": sa_definition.is_rp_user,
                 },
             )
+
+    def upsert_rest_proxy_secret_tasks(self):
+        for item in self.definition_rest_proxy_users:
+            value = item.split("~", 1)
+            sa_name, cluster_id = value[0], value[1]
+            secret_name, sa_details, cluster_details = self.secret_bundle._get_rest_proxy_user(
+                sa_name=sa_name, cluster_id=cluster_id
+            )
+            current_run_api_keys = [
+                item for item in self.secret_bundle._get_new_rest_proxy_api_keys() if item.cluster_id == cluster_id
+            ]
+            current_secrets_with_rp_access = [
+                item
+                for item in self.secret_bundle.secret.values()
+                if item.rp_access == "True" and item.sync_needed_for_rp == "True"
+            ]
+            if current_run_api_keys or current_secrets_with_rp_access:
+                yield WorkflowTypes.CSMConfigTask(
+                    task_type=WorkflowTypes.CSMConfigTaskType.update_task
+                    if self.secret_bundle.secret.get(secret_name, None) is not None
+                    else WorkflowTypes.CSMConfigTaskType.create_task,
+                    object_type=WorkflowTypes.CSMConfigObjectType.rest_proxy_user_type,
+                    status=WorkflowTypes.CSMConfigTaskStatus.sts_not_started,
+                    task_object={
+                        "sa_name": sa_name,
+                        "rp_secret_name": secret_name,
+                        "sa_details": sa_details,
+                        "cluster_details": cluster_details,
+                        "api_keys": current_run_api_keys.copy(),
+                        "secrets_with_rp_access": current_secrets_with_rp_access.copy(),
+                    },
+                )

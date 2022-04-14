@@ -7,26 +7,30 @@ from typing import Dict, List
 import app_managers.core.types as CSMBundle
 import boto3
 from botocore.client import Config
+from ccloud_managers.clusters import CCloudCluster
+from ccloud_managers.service_account import CCloudServiceAccount
 import ccloud_managers.types as CCloudBundle
 from botocore.exceptions import ClientError
 from ccloud_managers.api_key_manager import CCloudAPIKey
-from app_managers.helpers import printline
 from secret_managers.types import CSMSecret, CSMSecretsManager
 
 pp = pprint.PrettyPrinter(indent=2)
 
 
-@dataclass()
+@dataclass(kw_only=True)
 class AWSSecret(CSMSecret):
-    pass
+    def __post_init__(self) -> None:
+        super().__post_init__()
 
 
 class AWSSecretsList(CSMSecretsManager):
     secret: Dict[str, AWSSecret]
     client_reference = ""
 
-    def __init__(self, csm_bundle: CSMBundle.CSMYAMLConfigBundle) -> None:
-        self.csm_bundle = csm_bundle
+    def __init__(
+        self, csm_bundle: CSMBundle.CSMYAMLConfigBundle, ccloud_bundle: CCloudBundle.CCloudConfigBundle
+    ) -> None:
+        super().__init__(csm_bundle=csm_bundle, ccloud_bundle=ccloud_bundle)
         self.secret = {}
         self.login()
         self.read_all_secrets()
@@ -82,13 +86,21 @@ class AWSSecretsList(CSMSecretsManager):
                 self.add_to_cache(item["Name"], None, self.__flatten_secret_tags(item["Tags"]))
 
     def add_to_cache(self, secret_name: str, secret_value: Dict[str, str], secret_tags: Dict[str, str]) -> AWSSecret:
-        self.secret[secret_name] = AWSSecret(secret_name, secret_value, secret_tags)
+        self.secret[secret_name] = AWSSecret(
+            secret_name=secret_name,
+            secret_value=secret_value,
+            env_id=secret_tags["env_id"],
+            sa_id=secret_tags["sa_id"],
+            sa_name=secret_tags["sa_name"],
+            cluster_id=secret_tags["cluster_id"],
+            rp_access=secret_tags["rest_proxy_access"],
+            api_key=secret_tags.get("api_key", ""),
+            sync_needed_for_rp=secret_tags.get("sync_needed_for_rp", "True"),
+        )
         return self.secret[secret_name]
 
-    def find_secret(
-        self, ccloud_bundle: CCloudBundle.CCloudConfigBundle, sa_name: str, cluster_id: str = None, **kwargs
-    ) -> List[AWSSecret]:
-        temp_sa = ccloud_bundle.cc_service_accounts.find_sa(sa_name)
+    def find_secret(self, sa_name: str, cluster_id: str = None, **kwargs) -> List[AWSSecret]:
+        temp_sa = self.ccloud_bundle.cc_service_accounts.find_sa(sa_name)
         if cluster_id:
             return [v for v in self.secret.values() if v.sa_id == temp_sa.resource_id and v.cluster_id == cluster_id]
         else:
@@ -109,6 +121,11 @@ class AWSSecretsList(CSMSecretsManager):
             )
         return resp
 
+    def get_parsed_secret_value(self, secret_name: str) -> Dict[str, str]:
+        secret_value = self.get_secret(secret_name=secret_name)
+        resp = loads(secret_value["SecretString"])
+        return resp
+
     def __render_secret_tags(
         self, env_name, env_id, cluster_name, cluster_id, sa_name, sa_id, rest_proxy_access, **kwargs
     ):
@@ -121,37 +138,34 @@ class AWSSecretsList(CSMSecretsManager):
             "sa_name": sa_name,
             "sa_id": sa_id,
             "rest_proxy_access": rest_proxy_access,
+            **kwargs,
         }
 
-    def create_or_update_secret(
-        self,
-        api_key: CCloudAPIKey,
-        ccloud_bundle: CCloudBundle.CCloudConfigBundle,
-        csm_bundle: CSMBundle.CSMYAMLConfigBundle,
-        secret_name_postfix: str = None,
-    ) -> AWSSecret:
-        cluster = ccloud_bundle.cc_clusters.find_cluster(api_key.cluster_id)
-        env = ccloud_bundle.cc_environments.find_environment(cluster.env_id)
+    def create_or_update_secret(self, api_key: CCloudAPIKey, secret_name_postfix: str = None) -> AWSSecret:
+        cluster = self.ccloud_bundle.cc_clusters.find_cluster(api_key.cluster_id)
+        env = self.ccloud_bundle.cc_environments.find_environment(cluster.env_id)
 
-        secret_name = self.__create_secret_name_string(
-            csm_bundle.csm_configs.secretstore.prefix,
-            csm_bundle.csm_configs.secretstore.separator,
+        secret_name = self._create_secret_name_string(
+            self.csm_bundle.csm_configs.secretstore.prefix,
+            self.csm_bundle.csm_configs.secretstore.separator,
             env.env_id,
             cluster.cluster_id,
             api_key.owner_id,
             secret_name_postfix,
         )
-        def_details = csm_bundle.csm_definitions.find_service_account(
-            ccloud_bundle.cc_service_accounts.sa[api_key.owner_id].name
+        def_details = self.csm_bundle.csm_definitions.find_service_account(
+            self.ccloud_bundle.cc_service_accounts.sa[api_key.owner_id].name
         )
         secret_tags = self.__render_secret_tags(
             env.display_name,
             env.env_id,
             cluster.cluster_name,
             api_key.cluster_id,
-            ccloud_bundle.cc_service_accounts.sa[api_key.owner_id].name,
+            self.ccloud_bundle.cc_service_accounts.sa[api_key.owner_id].name,
             api_key.owner_id,
             def_details.rp_access,
+            api_key=api_key.api_key,
+            sync_needed_for_rp=True if def_details.rp_access else False,
         )
         secret_data = self.get_secret(secret_name)
         secret_value = {"username": api_key.api_key, "password": api_key.api_secret}
@@ -208,77 +222,87 @@ class AWSSecretsList(CSMSecretsManager):
     # and will cause AWS limit issues if you have too many API Keys and need them as part of REST Proxy users.
     def create_update_rest_proxy_secrets(
         self,
-        ccloud_bundle: CCloudBundle.CCloudConfigBundle,
-        csm_bundle: CSMBundle.CSMYAMLConfigBundle,
-        new_api_keys: List[CCloudAPIKey] = None,
+        rp_secret_name: str,
+        rp_sa_details: CCloudServiceAccount,
+        rp_cluster_details: CCloudCluster,
+        new_api_keys: List[CCloudAPIKey],
+        secrets_with_rp_access: List[CSMSecret],
+        is_rp_secret_new: bool,
         **kwargs,
     ):
-        printline()
-        print("Triggering REST Proxy Secret Update")
-        if not new_api_keys:
-            new_api_keys = self.__get_new_rest_proxy_api_keys(csm_bundle.csm_definitions, ccloud_bundle.cc_api_keys)
+        basic_key_string = "basic.txt"
+        jaas_key_string = "restProxyUsers.jaas"
+        if not is_rp_secret_new:
+            rp_secret = self.get_parsed_secret_value(secret_name=rp_secret_name)
+            current_fe_users = self._read_rp_fe_users(users_string=rp_secret.get(basic_key_string, ""))
+            _, _, current_k_users = self._read_rp_kafka_users(users_string=rp_secret.get(jaas_key_string, ""))
+        else:
+            rp_secret = dict()
+            current_fe_users = dict()
+            current_k_users = dict()
+        update_triggered = False
+        secrets_pending_tag_update: List[CSMSecret] = list()
 
-        rest_proxy_users_list = self.__get_rest_proxy_users(csm_bundle.csm_definitions, ccloud_bundle.cc_api_keys)
-
-        if not rest_proxy_users_list:
-            raise Exception(
-                "No REST Proxy users were found but the config is required to configure REST Proxy secret. Cannot proceed."
+        for api_key in [v for v in new_api_keys if v.api_key not in current_fe_users.keys()]:
+            is_fe_updated, rp_secret[basic_key_string] = self._add_front_end_user_to_rp_secret_string(
+                rp_secret_name, rp_secret.get(basic_key_string, ""), api_key.api_key, api_key.api_secret
             )
-
-        cluster_list = set([v.cluster_id for v in new_api_keys])
-        for item in cluster_list:
-            cluster_details = ccloud_bundle.cc_clusters.find_cluster(item)
-            rest_proxy_user = ""
-            for rp_iter in rest_proxy_users_list:
-                if rp_iter.cluster_id == item:
-                    rest_proxy_user = rp_iter
-                    break
-            if not rest_proxy_user:
-                raise Exception(f"Could not find the REST Proxy Service Account to set up secret in {item} cluster. ")
-            rp_secret_name = self.__create_secret_name_string(
-                csm_bundle.csm_configs.secretstore.prefix,
-                csm_bundle.csm_configs.secretstore.separator,
-                cluster_details.env_id,
-                cluster_details.cluster_id,
-                rest_proxy_user.owner_id,
-                csm_bundle.csm_configs.ccloud.rest_proxy_secret_name,
+            if is_fe_updated:
+                update_triggered = True
+        for api_key in [v for v in new_api_keys if v.api_key not in current_k_users.keys()]:
+            is_ku_updated, rp_secret[jaas_key_string] = self._add_kafka_users_to_rp_secret_string(
+                rp_secret_name, rp_secret.get(jaas_key_string, ""), api_key.api_key, api_key.api_secret
             )
-            rp_secret = self.get_secret(rp_secret_name)
-            if rp_secret:
-                rp_secret_data = loads(rp_secret["SecretString"])
-                is_new_secret = False
+            if is_ku_updated:
+                update_triggered = True
+        for secret in [v for v in secrets_with_rp_access if v.api_key not in current_fe_users.keys()]:
+            if not secret.secret_value:
+                secret.secret_value = self.get_parsed_secret_value(secret_name=secret.secret_name)
+            is_fe_updated, rp_secret[basic_key_string] = self._add_front_end_user_to_rp_secret_string(
+                secret_name=rp_secret_name,
+                curr_secret_string=rp_secret.get(basic_key_string, ""),
+                new_api_key=secret.secret_value["username"],
+                new_api_secret=secret.secret_value["password"],
+            )
+            if is_fe_updated:
+                update_triggered = True
+                secrets_pending_tag_update.append(secret)
+        for secret in [v for v in secrets_with_rp_access if v.api_key not in current_k_users.keys()]:
+            if not secret.secret_value:
+                secret.secret_value = self.get_parsed_secret_value(secret_name=secret.secret_name)
+            is_ku_updated, rp_secret[jaas_key_string] = self._add_kafka_users_to_rp_secret_string(
+                secret_name=rp_secret_name,
+                curr_secret_string=rp_secret.get(jaas_key_string, ""),
+                new_api_key=secret.secret_value["username"],
+                new_api_secret=secret.secret_value["password"],
+            )
+            if is_ku_updated:
+                update_triggered = True
+                secrets_pending_tag_update.append(secret)
+
+        if update_triggered:
+            if is_rp_secret_new:
+                env_details = self.ccloud_bundle.cc_environments.find_environment(rp_cluster_details.env_id)
+                secret_tags = self.__render_secret_tags(
+                    env_name=env_details.display_name,
+                    env_id=env_details.env_id,
+                    cluster_name=rp_cluster_details.cluster_name,
+                    cluster_id=rp_cluster_details.cluster_id,
+                    sa_name=rp_sa_details.name,
+                    sa_id=rp_sa_details.resource_id,
+                    rest_proxy_access=False,
+                    is_rest_proxy_user=True
+                    # api_key=api_key.api_key,
+                )
+                self.__create_secret(rp_secret_name, rp_secret, self.__render_secret_tags_format(secret_tags))
+                self.add_to_cache(rp_secret_name, rp_secret, secret_tags)
             else:
-                rp_secret_data = ""
-                is_new_secret = True
-            update_triggered = False
-            for api_key in [v for v in new_api_keys if v.cluster_id == item]:
-                # Rest proxy Front End String Update
-                is_updated, rp_secret_data["basic.txt"] = self.__add_front_end_user_to_rp_secret_string(
-                    rp_secret_name, rp_secret_data.get("basic.txt", ""), api_key.api_key, api_key.api_secret
+                response = self.client_reference.put_secret_value(
+                    SecretId=rp_secret_name, SecretString=dumps(rp_secret)
                 )
-                if is_updated:
-                    update_triggered = True
-                is_updated, rp_secret_data["restProxyUsers.jaas"] = self.__add_kafka_user_to_rp_secret_string(
-                    rp_secret_name, rp_secret_data.get("restProxyUsers.jaas", ""), api_key.api_key, api_key.api_secret
-                )
-                if is_updated:
-                    update_triggered = True
-            if update_triggered:
-                if is_new_secret:
-                    env_details = ccloud_bundle.cc_environments.find_environment(cluster_details.env_id)
-                    secret_tags = self.__render_secret_tags(
-                        env_details.display_name,
-                        env_details.env_id,
-                        cluster_details.cluster_name,
-                        cluster_details.cluster_id,
-                        ccloud_bundle.cc_service_accounts.sa[rest_proxy_user.owner_id].name,
-                        rest_proxy_user.owner_id,
-                        True,
-                    )
-                    self.__create_secret(rp_secret_name, rp_secret_data, self.__render_secret_tags_format(secret_tags))
-                    self.add_to_cache(rp_secret_name, rp_secret_data, secret_tags)
-                else:
-                    response = self.client_reference.put_secret_value(
-                        SecretId=rp_secret_name, SecretString=dumps(rp_secret_data)
-                    )
-                    print(f"Secret Successfully updated. Response\n {response}")
+                print(f"Secret Successfully updated. Response\n {response}")
+        for secret in secrets_with_rp_access:
+            self.client_reference.tag_resource(
+                SecretId=secret.secret_name,
+                Tags=[{"Key": "sync_needed_for_rp", "Value": "False"}],
+            )

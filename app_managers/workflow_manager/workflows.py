@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 
 import app_managers.core.types as CoreTypes
 from app_managers.workflow_manager.task_generator import CSMAPIKeyTasks, CSMSecretManagerTasks, CSMServiceAccountTasks
-from app_managers.workflow_manager.types import CSMConfigTaskStatus
+from app_managers.workflow_manager.types import CSMConfigTaskStatus, CSMConfigTaskType
 from ccloud_managers.types import CCloudConfigBundle
 from secret_managers.types import CSMSecretsManager
 from app_managers.helpers import printline
@@ -25,7 +25,10 @@ class WorkflowManager:
             csm_bundle=self.csm_bundle, ccloud_bundle=self.ccloud_bundle, secret_bundle=self.secret_bundle
         )
         self.secret_tasks = CSMSecretManagerTasks(
-            csm_bundle=self.csm_bundle, ccloud_bundle=self.ccloud_bundle, api_key_tasks=self.api_key_tasks
+            csm_bundle=self.csm_bundle,
+            ccloud_bundle=self.ccloud_bundle,
+            api_key_tasks=self.api_key_tasks,
+            secret_bundle=self.secret_bundle,
         )
 
     def create_service_accounts(self):
@@ -117,10 +120,22 @@ class WorkflowManager:
                 )
                 for api_key in api_key_details:
                     if api_key.api_secret:
-                        self.secret_bundle.create_or_update_secret(
-                            api_key=api_key,
-                            ccloud_bundle=self.ccloud_bundle,
-                            csm_bundle=self.csm_bundle,
-                        )
-                    is_secret_updated = True
+                        self.secret_bundle.create_or_update_secret(api_key=api_key)
+                        is_secret_updated = True
         return is_secret_updated
+
+    def update_rest_proxy_api_keys_in_secret_manager(self) -> bool:
+        printline()
+        print(f"Triggering Rest Proxy Update workflow. Dry Run flag: {self.dry_run}")
+        self.secret_tasks.refresh_set_values(api_key_tasks=self.api_key_tasks)
+        for item in self.secret_tasks.upsert_rest_proxy_secret_tasks():
+            item.print_task_data()
+            if not self.dry_run:
+                self.secret_bundle.create_update_rest_proxy_secrets(
+                    rp_secret_name=item.task_object["rp_secret_name"],
+                    rp_sa_details=item.task_object["sa_details"],
+                    rp_cluster_details=item.task_object["cluster_details"],
+                    new_api_keys=item.task_object["api_keys"],
+                    secrets_with_rp_access=item.task_object["secrets_with_rp_access"],
+                    is_rp_secret_new=True if item.task_type == CSMConfigTaskType.create_task else False,
+                )
