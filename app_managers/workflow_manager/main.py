@@ -37,8 +37,8 @@ def trigger_workflows(args: Namespace):
         if not args.disable_api_key_creation:
             # API Key management workflows
             workflow_manager.create_api_keys()
-            if csm_bundle.csm_configs.ccloud.enable_api_key_cleanup:
-                workflow_manager.delete_api_keys()
+            # if csm_bundle.csm_configs.ccloud.enable_api_key_cleanup:
+            #     workflow_manager.delete_api_keys()
 
             # Secret management Workflows
             _ = workflow_manager.update_api_keys_in_secret_manager()
