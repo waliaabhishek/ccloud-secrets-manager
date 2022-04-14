@@ -34,6 +34,16 @@ def mandatory_check(key, value):
         raise Exception(key + " is a mandatory attribute. Please populate to ensure correct functionality.")
 
 
+def check_pair(key1Name, key1Value, key2Name, key2Value):
+    if (key1Value and not key2Value) or (not key1Value and key2Value) or (not key1Value and not key2Value):
+        raise Exception("Both " + key1Name + " & " + key2Name + " must be present in the configuration.")
+    return
+
+
+def printline():
+    print("=" * 80)
+
+
 if __name__ == "__main__":
     test = ["env:safdsaf", "regular", ENV_PREFIX + "CONFLUENT_CLOUD_EMAIL"]
 

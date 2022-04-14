@@ -10,17 +10,15 @@ The long term aim of this integration is as follows:
 - [X] Allow creation of Service Accounts using standardized YAML structure
 - [X] Allow creation of API Keys for the corresponding SA automatically
 - [X] Allow storing the SA & API Key details into a pluggable Secrets manager for ease of management and greater flexibility - Done for AWS Secrets Manager with more to follow.
+- [X] Add REST Proxy Access logic.
 - [ ] Enable Permission management for the pluggable Secret Manger, so that it can become one stop shop for Confluent Cloud secret management - Not started yet.
 - [ ] Add API Key Rolling logic
-- [ ] Add REST Proxy Access logic.
 - [ ] Add Login and connectivity test logic for Secret Management framework.
 
 
 ## Quickstart
 
 Ensure that you have the following installed on system that this utility will be run on:
-* [Install AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
-* [AWS Token signed in or environment variables set up as this utility will not make an attempt for AWS login.](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html)
 *  [Install Confluent CLI](https://docs.confluent.io/confluent-cli/current/install.html)
 ```
 https://github.com/waliaabhishek/ccloud-secrets-manager
@@ -64,7 +62,7 @@ There are 2 main sections in the configurations file:
     * `type: <string>`: Currently can only take one value string `aws-secretsmanager`. More options will hopefully be available as I get more time to work on the utility.
     * `prefix: <string>`: If you would like to have a constant string prefixed to every secret path, this is the setting to use. Defaults to `""`
     * `separator: <string>`: If you would like to have a constant separating different tokens used in the secret path, this is the setting to use. Defaults to `/`
-    * `configs: <list<name-value pairs>>`: This is a placeholder for any ancillary configurations that may be needed for any other Secret Management store. Currently not used. 
+    * `configs: <list<name-value pairs>>`: This is a placeholder for configurations that may be needed for the Secret Management store. Eg - All the KV Pairs passed inside config will be used for initializing AWS SecretStore as per boto3 KV pair requirement as mentioned [here](https://boto3.amazonaws.com/v1/documentation/api/latest/_modules/boto3/session.html#Session.client)
 
 ### Definitions File
 

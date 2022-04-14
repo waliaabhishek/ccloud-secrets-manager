@@ -15,6 +15,12 @@ configs:
     type: aws-secretsmanager
     prefix: ""
     separator: "/"
+    rest_proxy_secret_name: "rest_proxy_kafka_users"
     configs:
-      - testing: "api_service"
-      - secret_token: "api_pat_token"
+      - region_name: "region_name"
+      - aws_access_key_id: "aws_access_key"
+      - aws_secret_access_key: "aws_secret_access_key"
+      # - aws_session_token: ""
+      # - config:
+      #     - read_timeout: 45
+      #     # - signature_version: "v4"
