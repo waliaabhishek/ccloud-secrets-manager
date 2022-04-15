@@ -32,6 +32,7 @@ class CSMYAMLCCloudConfigs:
     detect_ignore_ccloud_internal_accounts: bool = False
     enable_sa_cleanup: bool = False
     enable_api_key_cleanup: bool = False
+    old_api_keys_deletion_wait_mins: int = 30
 
     def __post_init__(self) -> None:
         check_pair("api_key", self.api_key, "api_secret", self.api_secret)

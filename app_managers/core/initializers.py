@@ -26,6 +26,7 @@ def initialize(
         else False,
         enable_sa_cleanup=temp["enable_sa_cleanup"] if "enable_sa_cleanup" in temp else False,
         enable_api_key_cleanup=temp["enable_api_key_cleanup"] if "enable_api_key_cleanup" in temp else False,
+        old_api_keys_deletion_wait_mins=temp.get("old_api_keys_deletion_wait_mins", 30),
     )
 
     temp = csm_config["configs"]["secret_store"]

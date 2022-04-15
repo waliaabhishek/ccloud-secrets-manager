@@ -5,21 +5,23 @@ configs:
     api_secret: "env::CCLOUD_API_SECRET"
     ccloud_user: "env::CONFLUENT_CLOUD_EMAIL"
     ccloud_password: "env::CONFLUENT_CLOUD_PASSWORD"
-    # enable_sa_cleanup: true
+    enable_sa_cleanup: true
+    enable_api_key_cleanup: false
+    old_api_keys_deletion_wait_mins: 30
     detect_ignore_ccloud_internal_accounts: true
+    rest_proxy_secret_name: "rest_proxy_kafka_users"
     ignore_service_account_list:
       - sa-xxxxx
       - sa-yyyyy
   secret_store:
     enabled: true
     type: aws-secretsmanager
-    prefix: ""
-    separator: "/"
-    rest_proxy_secret_name: "rest_proxy_kafka_users"
+    prefix: "test2"
+    # separator: "/"
     configs:
-      - region_name: "region_name"
-      - aws_access_key_id: "aws_access_key"
-      - aws_secret_access_key: "aws_secret_access_key"
+      - region_name: "env::AWS_REGION_NAME"
+      - aws_access_key_id: "env::AWS_ACCESS_KEY_ID"
+      - aws_secret_access_key: "env::AWS_SECRET_ACCESS_KEY"
       # - aws_session_token: ""
       # - config:
       #     - read_timeout: 45

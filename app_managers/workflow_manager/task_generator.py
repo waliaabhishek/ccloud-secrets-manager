@@ -123,19 +123,36 @@ class CSMAPIKeyTasks(WorkflowTypes.CSMConfigDataMap):
             )
 
     def delete_api_key_tasks(self):
-        ignore_sa_id_set = set(self.csm_bundle.csm_configs.ccloud.ignore_service_account_list)
-        ignore_sa_names = set(
+        ignore_sa_list = set(
             [
-                item.name
-                for item in self.ccloud_bundle.cc_service_accounts.sa.values()
-                if item.resource_id in ignore_sa_id_set
+                v.name
+                for k, v in self.ccloud_bundle.cc_service_accounts.sa.items()
+                if v.resource_id in self.csm_bundle.csm_configs.ccloud.ignore_service_account_list
             ]
         )
+        # Find Keys that are in ccloud but are not registered in the csm configuration.
         deletion_eligible_api_keys = self.find_items_to_be_deleted(
             config_item_names=self.api_keys_in_def, ccloud_item_names=self.api_keys_in_ccloud
         )
+        # Remove the keys from the above output that should be ignored.
         deletion_eligible_api_keys = set(
-            [item for item in deletion_eligible_api_keys if item.split("~", 1)[0] not in ignore_sa_names]
+            [item for item in deletion_eligible_api_keys if item.split("~", 1)[0] not in ignore_sa_list]
+        )
+        # Check the Secrets for the existing API Keys. This is required to delete the keys that may be existing
+        # in CCloud but may have been rotated or were never stored into secret management layer.
+        curr_secrets = set([str(f"{item.api_key}") for item in self.secret_bundle.secret.values()])
+        # Find keys in ccloud that are older than the config parameter.
+        curr_api_keys = set(
+            [
+                str(k)
+                for k, v in self.ccloud_bundle.cc_api_keys.api_keys.items()
+                if self.ccloud_bundle.cc_api_keys.mins_since_api_key_creation(api_key=k)
+                > self.csm_bundle.csm_configs.ccloud.old_api_keys_deletion_wait_mins
+                and v.owner_id not in self.csm_bundle.csm_configs.ccloud.ignore_service_account_list
+            ]
+        )
+        delete_secret_mismatched_keys = self.find_items_to_be_deleted(
+            config_item_names=curr_secrets, ccloud_item_names=curr_api_keys
         )
         for item in deletion_eligible_api_keys:
             value = item.split("~", 1)
@@ -149,6 +166,21 @@ class CSMAPIKeyTasks(WorkflowTypes.CSMConfigDataMap):
                     object_type=WorkflowTypes.CSMConfigObjectType.api_key_type,
                     status=WorkflowTypes.CSMConfigTaskStatus.sts_not_started,
                     task_object={"sa_name": sa_name, "sa_id": sa_id, "cluster_id": cluster_id, "api_key": key.api_key},
+                )
+        for item in delete_secret_mismatched_keys:
+            api_key_details = self.ccloud_bundle.cc_api_keys.api_keys.get(item, None)
+            if api_key_details:
+                sa_details = self.ccloud_bundle.cc_service_accounts.sa.get(api_key_details.owner_id)
+                yield WorkflowTypes.CSMConfigTask(
+                    task_type=WorkflowTypes.CSMConfigTaskType.delete_task,
+                    object_type=WorkflowTypes.CSMConfigObjectType.api_key_type,
+                    status=WorkflowTypes.CSMConfigTaskStatus.sts_not_started,
+                    task_object={
+                        "sa_name": sa_details.name,
+                        "sa_id": sa_details.resource_id,
+                        "cluster_id": api_key_details.cluster_id,
+                        "api_key": api_key_details.api_key,
+                    },
                 )
 
 
