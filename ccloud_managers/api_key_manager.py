@@ -1,7 +1,7 @@
 import pprint
 import subprocess
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from json import loads
 from operator import itemgetter
 from typing import Dict, List
@@ -94,7 +94,7 @@ class CCloudAPIKeyList(CCloudBase):
         for key in output:
             if key["owner_resource_id"] in sa_list and key["resource_type"] == "kafka" and key["resource_id"]:
                 print(
-                    f'API Key: {key["key"]} for SA: {key["owner_resource_id"]}, Resource Type: {key["owner_resource_id"]} will be considered.'
+                    f'API Key: {key["key"]} for SA: {key["owner_resource_id"]}, Resource Type: {key["resource_type"]} will be considered.'
                 )
                 self.__add_to_cache(
                     CCloudAPIKey(
@@ -108,7 +108,7 @@ class CCloudAPIKeyList(CCloudBase):
                 )
             else:
                 print(
-                    f'API Key: {key["key"]} for SA: {key["owner_resource_id"]}, Resource Type: {key["owner_resource_id"]} will be ignored.'
+                    f'API Key: {key["key"]} for SA: {key["owner_resource_id"]}, Resource Type: {key["resource_type"]} will be ignored.'
                 )
 
     def __add_to_cache(self, api_key: CCloudAPIKey) -> None:
@@ -205,3 +205,15 @@ class CCloudAPIKeyList(CCloudBase):
                     item.api_key_description,
                 )
             )
+
+    def mins_since_api_key_creation(self, api_key: str) -> int:
+        api_key_details = self.api_keys.get(api_key)
+        if not api_key_details:
+            raise Exception(f"API Key {api_key} not found.")
+        api_key_creation_date = datetime.strptime(api_key_details.created_at, "%Y-%m-%dT%H:%M:%S%z")
+        now_date = datetime.now(tz=timezone.utc)
+        if now_date < api_key_creation_date:
+            return 0
+        else:
+            diff = now_date - api_key_creation_date
+            return int(diff.seconds / 60)
