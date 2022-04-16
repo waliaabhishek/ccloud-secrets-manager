@@ -9,6 +9,7 @@ service_accounts:
   - name: testing2
     description: "Service Account for testing2 team"
     enable_rest_proxy_access: false
+    is_rest_proxy_user: true
     team_email_address: "abc@abc.com"
     api_key_access:
       - lkc-rzj29
