@@ -22,6 +22,7 @@ class CSMSecret:
     api_key: str
     rp_access: bool
     sync_needed_for_rp: bool
+    api_keys_count: str
 
     def __post_init__(self) -> None:
         pass
@@ -51,11 +52,15 @@ class CSMSecretsManager(ABC):
         pass
 
     @abstractmethod
+    def add_tags(self, secret_name: str, tags: Dict[str, str]):
+        pass
+
+    @abstractmethod
     def find_secret(self, sa_name: str, cluster_id: str = None, **kwargs) -> List[CSMSecret]:
         pass
 
     @abstractmethod
-    def create_or_update_secret(**kwargs):
+    def create_or_update_secret(**kwargs) -> CSMSecret:
         pass
 
     @abstractmethod
@@ -93,7 +98,7 @@ class CSMSecretsManager(ABC):
         sa_names = [v for v in self.csm_bundle.csm_definitions.sa if v.rp_access]
         sa_id: List[str] = []
         for item in sa_names:
-            sa_details = self.ccloud_bundle.cc_service_accounts.find_sa(sa_name=item)
+            sa_details = self.ccloud_bundle.cc_service_accounts.find_sa(sa_name=item.name)
             if sa_details:
                 sa_id.append(sa_details.resource_id)
         api_key_details = [
@@ -226,3 +231,72 @@ class CSMSecretsManager(ABC):
             in_string = "".join(self._render_rp_kafka_user_string(k, v) for k, v in jaas_users.items())
             output_string = "".join((prepend, in_string, postpend))
             return (True, output_string)
+
+    def _add_users_to_rest_proxy_secret_string(
+        self,
+        rp_secret_name: str,
+        rp_secret_value: Dict[str, str],
+        new_api_keys: List[CCloudAPIKey],
+        secrets_with_rp_access: List[CSMSecret],
+        is_rp_secret_new: bool,
+        fe_users_key: str = "basic.txt",
+        kafka_users_key: str = "restProxyUsers.jaas",
+    ) -> Tuple[bool, Dict[str, str], List[CSMSecret]]:
+        current_fe_users = self._read_rp_fe_users(users_string=rp_secret_value.get(fe_users_key, ""))
+        _, _, current_k_users = self._read_rp_kafka_users(users_string=rp_secret_value.get(kafka_users_key, ""))
+        secrets_pending_tag_update: List[CSMSecret] = list()
+        update_triggered = False
+
+        for api_key in [v for v in new_api_keys if v.api_key not in current_fe_users.keys()]:
+            is_fe_updated, rp_secret_value[fe_users_key] = self._add_front_end_user_to_rp_secret_string(
+                rp_secret_name, rp_secret_value.get(fe_users_key, ""), api_key.api_key, api_key.api_secret
+            )
+            if is_fe_updated:
+                update_triggered = True
+                secret_name = [v for v in self.secret.values() if v.api_key == api_key.api_key]
+                secrets_pending_tag_update.append(secret_name)
+        for api_key in [v for v in new_api_keys if v.api_key not in current_k_users.keys()]:
+            is_ku_updated, rp_secret_value[kafka_users_key] = self._add_kafka_users_to_rp_secret_string(
+                rp_secret_name, rp_secret_value.get(kafka_users_key, ""), api_key.api_key, api_key.api_secret
+            )
+            if is_ku_updated:
+                update_triggered = True
+                secret_name = [v for v in self.secret.values() if v.api_key == api_key.api_key]
+                secrets_pending_tag_update.append(secret_name)
+        for secret in [v for v in secrets_with_rp_access if v.api_key not in current_fe_users.keys()]:
+            if not secret.secret_value:
+                secret.secret_value = self.get_parsed_secret_value(secret_name=secret.secret_name)
+            is_fe_updated, rp_secret_value[fe_users_key] = self._add_front_end_user_to_rp_secret_string(
+                secret_name=rp_secret_name,
+                curr_secret_string=rp_secret_value.get(fe_users_key, ""),
+                new_api_key=secret.secret_value["username"],
+                new_api_secret=secret.secret_value["password"],
+            )
+            if is_fe_updated:
+                update_triggered = True
+                secrets_pending_tag_update.append(secret)
+        for secret in [v for v in secrets_with_rp_access if v.api_key not in current_k_users.keys()]:
+            if not secret.secret_value:
+                secret.secret_value = self.get_parsed_secret_value(secret_name=secret.secret_name)
+            is_ku_updated, rp_secret_value[kafka_users_key] = self._add_kafka_users_to_rp_secret_string(
+                secret_name=rp_secret_name,
+                curr_secret_string=rp_secret_value.get(kafka_users_key, ""),
+                new_api_key=secret.secret_value["username"],
+                new_api_secret=secret.secret_value["password"],
+            )
+            if is_ku_updated:
+                update_triggered = True
+                secrets_pending_tag_update.append(secret)
+
+        return (update_triggered, rp_secret_value, secrets_pending_tag_update)
+
+    def _get_rp_users_count(
+        self,
+        secret_value: Dict[str, str],
+        fe_users_key: str = "basic.txt",
+        kafka_users_key: str = "restProxyUsers.jaas",
+    ) -> Dict[str, str]:
+        fe_user_count = len(self._read_rp_fe_users(users_string=secret_value.get(fe_users_key, "")))
+        _, _, kafka_users = self._read_rp_kafka_users(users_string=secret_value.get(kafka_users_key, ""))
+        kafka_users_count = len(kafka_users)
+        return {"api_keys_count": str(f"{fe_user_count}--{kafka_users_count}")}

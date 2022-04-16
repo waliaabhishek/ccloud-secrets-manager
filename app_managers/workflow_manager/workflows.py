@@ -106,10 +106,9 @@ class WorkflowManager:
                         object_payload=item.task_object,
                     )
 
-    def update_api_keys_in_secret_manager(self) -> bool:
+    def update_api_keys_in_secret_manager(self):
         printline()
         print(f"Triggering Secret Manager Update workflow. Dry Run flag: {self.dry_run}")
-        is_secret_updated = False
         self.secret_tasks.refresh_set_values(api_key_tasks=self.api_key_tasks)
         for item in itertools.chain(self.secret_tasks.create_secret_tasks(), self.secret_tasks.update_secret_tasks()):
             item.print_task_data()
@@ -120,9 +119,38 @@ class WorkflowManager:
                 )
                 for api_key in api_key_details:
                     if api_key.api_secret:
-                        self.secret_bundle.create_or_update_secret(api_key=api_key)
-                        is_secret_updated = True
-        return is_secret_updated
+                        resp = self.secret_bundle.create_or_update_secret(api_key=api_key)
+                        item.set_task_status(
+                            task_status=CSMConfigTaskStatus.sts_success,
+                            status_msg="Secret Updated Successfully",
+                            object_payload={
+                                "secret_name": resp.secret_name,
+                                "sa_name": resp.sa_name,
+                                "sa_id": resp.sa_id,
+                                "cluster_id": resp.cluster_id,
+                                "api_key": resp.api_key,
+                            },
+                        )
+
+    def update_tags_in_secret_manager(self) -> bool:
+        printline()
+        print(f"Triggering Secret Manager Rest Proxy Tags Reconciliation workflow. Dry Run flag: {self.dry_run}")
+        self.secret_tasks.refresh_set_values(api_key_tasks=self.api_key_tasks)
+        for item in self.secret_tasks.update_secret_tags_tasks():
+            item.print_task_data()
+            if not self.dry_run:
+                self.secret_bundle.add_tags(
+                    secret_name=item.task_object["secret_name"],
+                    tags={"rest_proxy_access": item.task_object["rest_proxy_access"], "sync_needed_for_rp": True},
+                )
+                secret_details = self.secret_bundle.secret[item.task_object["secret_name"]]
+                secret_details.sync_needed_for_rp = True
+                secret_details.rp_access = item.task_object["rest_proxy_access"]
+                item.set_task_status(
+                    task_status=CSMConfigTaskStatus.sts_success,
+                    status_msg="Secret Tags Updated Successfully",
+                    object_payload=item.task_object,
+                )
 
     def update_rest_proxy_api_keys_in_secret_manager(self) -> bool:
         printline()
@@ -135,7 +163,24 @@ class WorkflowManager:
                     rp_secret_name=item.task_object["rp_secret_name"],
                     rp_sa_details=item.task_object["sa_details"],
                     rp_cluster_details=item.task_object["cluster_details"],
-                    new_api_keys=item.task_object["api_keys"],
-                    secrets_with_rp_access=item.task_object["secrets_with_rp_access"],
+                    new_api_keys=[
+                        v
+                        for v in self.ccloud_bundle.cc_api_keys.api_keys.values()
+                        if v.api_key in item.task_object["api_keys"]
+                    ],
+                    secrets_with_rp_access=[
+                        v
+                        for v in self.secret_bundle.secret.values()
+                        if v.secret_name in item.task_object["secrets_with_rp_access"]
+                    ],
                     is_rp_secret_new=True if item.task_type == CSMConfigTaskType.create_task else False,
+                )
+                item.set_task_status(
+                    task_status=CSMConfigTaskStatus.sts_success,
+                    status_msg="REST Proxy Secret Updated Successfully",
+                    object_payload={
+                        "rp_secret_name": item.task_object["rp_secret_name"],
+                        "api_keys": item.task_object["api_keys"],
+                        "secrets_with_rp_access": item.task_object["secrets_with_rp_access"],
+                    },
                 )

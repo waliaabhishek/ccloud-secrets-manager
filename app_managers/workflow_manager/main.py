@@ -42,6 +42,8 @@ def trigger_workflows(args: Namespace):
 
             # Secret management Workflows
             workflow_manager.update_api_keys_in_secret_manager()
+            workflow_manager.update_tags_in_secret_manager()
+            # TODO: Remove Unused keys from the REST Proxy user. 
             workflow_manager.update_rest_proxy_api_keys_in_secret_manager()
         if csm_bundle.csm_configs.ccloud.enable_sa_cleanup:
             workflow_manager.delete_service_accounts()

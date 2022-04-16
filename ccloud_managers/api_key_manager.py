@@ -164,7 +164,7 @@ class CCloudAPIKeyList(CCloudBase):
                 api_key_description=api_key_description,
                 owner_id=sa_id,
                 cluster_id=cluster_id,
-                created_at=str(datetime.now()),
+                created_at=str(datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S%z")),
             )
         )
         return (output, True)

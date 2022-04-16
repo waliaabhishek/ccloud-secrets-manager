@@ -188,6 +188,7 @@ class CSMSecretManagerTasks(WorkflowTypes.CSMConfigDataMap):
     create_secrets_req: Set[str]
     update_secrets_req: Set[str]
     definition_rest_proxy_users: Set[str]
+    definition_rest_proxy_access_requests: Set[str]
     api_key_tasks: CSMAPIKeyTasks
     secret_bundle: CSMSecretsManager
 
@@ -202,6 +203,7 @@ class CSMSecretManagerTasks(WorkflowTypes.CSMConfigDataMap):
         self.api_key_tasks = api_key_tasks
         self.secret_bundle = secret_bundle
         self.definition_rest_proxy_users = set()
+        self.definition_rest_proxy_access_requests = set()
         self.refresh_set_values(self.api_key_tasks)
 
     def refresh_set_values(self, api_key_tasks: CSMAPIKeyTasks):
@@ -209,13 +211,22 @@ class CSMSecretManagerTasks(WorkflowTypes.CSMConfigDataMap):
         self.create_secrets_req = api_key_tasks.create_secrets_req
         self.update_secrets_req = api_key_tasks.update_secrets_req
         # Derive the Rest Proxy User from Definitions file
-        for sa in self.csm_bundle.csm_definitions.sa:
-            if sa.is_rp_user:
-                if "FORCE_ALL_CLUSTERS" in sa.cluster_list:
-                    cluster_list = set([item.cluster_id for item in self.ccloud_bundle.cc_clusters.cluster.values()])
-                else:
-                    cluster_list = set(sa.cluster_list)
-                self.definition_rest_proxy_users.update(set([str(f"{sa.name}~{cluster}") for cluster in cluster_list]))
+        for sa_obj in self.csm_bundle.csm_definitions.sa:
+            if "FORCE_ALL_CLUSTERS" in sa_obj.cluster_list:
+                cluster_list = set([item.cluster_id for item in self.ccloud_bundle.cc_clusters.cluster.values()])
+            else:
+                cluster_list = set(sa_obj.cluster_list)
+            if sa_obj.is_rp_user:
+                self.definition_rest_proxy_users.update(
+                    set([str(f"{sa_obj.name}~{cluster}") for cluster in cluster_list])
+                )
+                self.definition_rest_proxy_access_requests.update(
+                    set([str(f"{sa_obj.name}~{cluster}") for cluster in cluster_list])
+                )
+            if sa_obj.rp_access:
+                self.definition_rest_proxy_access_requests.update(
+                    set([str(f"{sa_obj.name}~{cluster}") for cluster in cluster_list])
+                )
 
     def create_secret_tasks(self):
         for item in self.create_secrets_req:
@@ -255,6 +266,65 @@ class CSMSecretManagerTasks(WorkflowTypes.CSMConfigDataMap):
                 },
             )
 
+    def update_secret_tags_tasks(self):
+        secret_rp_access_true = set(
+            [
+                str(f"{v.sa_name}~{v.cluster_id}")
+                for v in self.secret_bundle.secret.values()
+                if v.rp_access
+                and not v.secret_name.endswith(self.csm_bundle.csm_configs.ccloud.rest_proxy_secret_name)
+            ]
+        )
+        secret_rp_access_false = set(
+            [
+                str(f"{v.sa_name}~{v.cluster_id}")
+                for v in self.secret_bundle.secret.values()
+                if not v.rp_access
+                and not v.secret_name.endswith(self.csm_bundle.csm_configs.ccloud.rest_proxy_secret_name)
+            ]
+        )
+        # Find the secrets that have the tags set to False but the definition file requests it to be true.
+        action_items = secret_rp_access_false.intersection(self.definition_rest_proxy_access_requests)
+        # find the secrets that have the tags set to True but the definition file requests it to be False
+        action_items.update(secret_rp_access_true.difference(self.definition_rest_proxy_access_requests))
+
+        rp_secrets = [
+            v
+            for v in self.secret_bundle.secret.values()
+            if v.secret_name.endswith(self.csm_bundle.csm_configs.ccloud.rest_proxy_secret_name)
+        ]
+        for rp_secret in rp_secrets:
+            def_requests = [v for v in self.definition_rest_proxy_access_requests if v.endswith(rp_secret.cluster_id)]
+            api_keys_expected_count = len(def_requests)
+            api_key_actual_count = rp_secret.api_keys_count.split("--", 1)
+            fe_key_count, kafka_key_count = int(api_key_actual_count[0]), int(api_key_actual_count[1])
+            if api_keys_expected_count != fe_key_count or api_keys_expected_count != kafka_key_count:
+                action_items.update(def_requests)
+
+        for item in action_items:
+            value = item.split("~", 1)
+            sa_name, cluster_id = value[0], value[1]
+            secret_details = [
+                v
+                for v in self.secret_bundle.secret.values()
+                if v.cluster_id == cluster_id
+                and v.sa_name == sa_name
+                and not v.secret_name.endswith(self.csm_bundle.csm_configs.ccloud.rest_proxy_secret_name)
+            ]
+            for secret in secret_details:
+                yield WorkflowTypes.CSMConfigTask(
+                    task_type=WorkflowTypes.CSMConfigTaskType.update_task,
+                    object_type=WorkflowTypes.CSMConfigObjectType.secret_tags_type,
+                    status=WorkflowTypes.CSMConfigTaskStatus.sts_not_started,
+                    task_object={
+                        "sa_name": secret.sa_name,
+                        "sa_id": secret.sa_id,
+                        "cluster_id": cluster_id,
+                        "rest_proxy_access": True if item in self.definition_rest_proxy_access_requests else False,
+                        "secret_name": secret.secret_name,
+                    },
+                )
+
     def upsert_rest_proxy_secret_tasks(self):
         for item in self.definition_rest_proxy_users:
             value = item.split("~", 1)
@@ -263,12 +333,14 @@ class CSMSecretManagerTasks(WorkflowTypes.CSMConfigDataMap):
                 sa_name=sa_name, cluster_id=cluster_id
             )
             current_run_api_keys = [
-                item for item in self.secret_bundle._get_new_rest_proxy_api_keys() if item.cluster_id == cluster_id
+                item.api_key
+                for item in self.secret_bundle._get_new_rest_proxy_api_keys()
+                if item.cluster_id == cluster_id
             ]
             current_secrets_with_rp_access = [
-                item
+                item.secret_name
                 for item in self.secret_bundle.secret.values()
-                if item.rp_access == "True" and item.sync_needed_for_rp == "True"
+                if item.rp_access and item.sync_needed_for_rp and item.cluster_id == cluster_id
             ]
             if current_run_api_keys or current_secrets_with_rp_access:
                 yield WorkflowTypes.CSMConfigTask(
@@ -282,7 +354,7 @@ class CSMSecretManagerTasks(WorkflowTypes.CSMConfigDataMap):
                         "rp_secret_name": secret_name,
                         "sa_details": sa_details,
                         "cluster_details": cluster_details,
-                        "api_keys": current_run_api_keys.copy(),
-                        "secrets_with_rp_access": current_secrets_with_rp_access.copy(),
+                        "api_keys": current_run_api_keys,
+                        "secrets_with_rp_access": current_secrets_with_rp_access,
                     },
                 )
